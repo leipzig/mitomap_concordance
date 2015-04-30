@@ -11,13 +11,29 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r}
 library(RPostgreSQL)
-con <- dbConnect(PostgreSQL(), user= "mitoadmin", password="Foni]Nesu&Huh?", dbname="mito", host="rescommapdbo01.research.chop.edu")
+con <- dbConnect(PostgreSQL(), user= "mitoadmin", password="Foni]Nesu&Huh?", dbname="mito", host="rescommapdb01.research.chop.edu")
+rs <- dbSendQuery(con,"select * from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos")
+
+# need to deal with overlapping loci
+
+genbank_count <- fetch(rs, n = -1) # extract all rows
+# > head(df)
+#   pos ref alt haplogroup cnt
+# 1   5   A   C         B2   1
+# 2   5   A   C        H65   1
+# 3   8   G   T       M33a   2
+# 4   9   G   A        B2g   1
+# 5   9   G   A          C   2
+# 6   9   G   A        F2b   2
 ```
 
-You can also embed plots, for example:
+Variants by position
 
 ```{r, echo=FALSE}
-plot(cars)
+library(ggplot2)
+library(dplyr)
+by_pos <- group_by(genbank_count, pos)
+hist_pos <- summarise(by_pos,variants=sum(cnt))
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
