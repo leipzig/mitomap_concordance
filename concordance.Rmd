@@ -10,30 +10,39 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r}
+library(ggplot2)
+library(dplyr)
 library(RPostgreSQL)
 con <- dbConnect(PostgreSQL(), user= "mitoadmin", password="Foni]Nesu&Huh?", dbname="mito", host="rescommapdb01.research.chop.edu")
-rs <- dbSendQuery(con,"select * from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos")
-
-# need to deal with overlapping loci
-
+rs <- dbSendQuery(con,"select distinct on (genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos, ref, alt, haplogroup, cnt, locus_id")
 genbank_count <- fetch(rs, n = -1) # extract all rows
-# > head(df)
-#   pos ref alt haplogroup cnt
-# 1   5   A   C         B2   1
-# 2   5   A   C        H65   1
-# 3   8   G   T       M33a   2
-# 4   9   G   A        B2g   1
-# 5   9   G   A          C   2
-# 6   9   G   A        F2b   2
+
+types<-list("n"="non-coding","t"="tRNA","m"="coding","r"="rRNA")
+genbank_count$type<-sapply(genbank_count$type,function(x){types[[x]]})
+
+dbDisconnect(con)
+# > head(genbank_count)
+#   pos ref alt haplogroup cnt common_name
+# 1   5   A   C         B2   1         ATT
+# 2   5   A   C        H65   1         ATT
+# 3   8   G   T       M33a   2         ATT
+# 4   9   G   A        B2g   1         ATT
+# 5   9   G   A          C   2         ATT
+# 6   9   G   A        F2b   2         ATT
 ```
 
 Variants by position
 
 ```{r, echo=FALSE}
-library(ggplot2)
-library(dplyr)
-by_pos <- group_by(genbank_count, pos)
+by_pos <- group_by(genbank_count, pos, locus, type)
 hist_pos <- summarise(by_pos,variants=sum(cnt))
+#ggplot(data=hist_pos,aes(pos,variants))+geom_point(stat="identity")
+#http://www.gettinggeneticsdone.com/2013/11/a-mitochondrial-manhattan-plot.html
+#https://github.com/hadley/ggplot2/wiki/Plotting-Mitochondrial-Genetic-Association-Results
+p <- ggplot(hist_pos, aes(x = pos,y = variants,color = type)) + geom_point()+ coord_polar(direction = -1) 
+
+
+#+ geom_line(aes(x,1.30,color = "red"),data = lines) + facet_grid(.~race2) + geom_line(aes(y=extraline)) + geom_point(aes(x,y,color = gene),data=lines) + scale_colour_manual(values = #colours,"Genes",breaks = c("Control-Region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"),labels = c("Control #Region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"))+ opts(title = "Negative Log P-value of Mitochondrial Hits", #axis.text.x = theme_blank(), axis.title.y = theme_blank(), axis.title.x=theme_blank()) + layer(geom="text",mapping =aes(x,y,label = x),data = bdries,size=2.5)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
