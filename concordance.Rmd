@@ -31,7 +31,7 @@ dbDisconnect(con)
 # 6   9   G   A        F2b   2         ATT
 ```
 
-Variants by position
+Variant frequency by position
 
 ```{r, echo=FALSE}
 by_pos <- group_by(genbank_count, pos, locus, type)
@@ -40,9 +40,64 @@ hist_pos <- summarise(by_pos,variants=sum(cnt))
 #http://www.gettinggeneticsdone.com/2013/11/a-mitochondrial-manhattan-plot.html
 #https://github.com/hadley/ggplot2/wiki/Plotting-Mitochondrial-Genetic-Association-Results
 p <- ggplot(hist_pos, aes(x = pos,y = variants,color = type)) + geom_point()+ coord_polar(direction = -1) 
-
+print(p)
 
 #+ geom_line(aes(x,1.30,color = "red"),data = lines) + facet_grid(.~race2) + geom_line(aes(y=extraline)) + geom_point(aes(x,y,color = gene),data=lines) + scale_colour_manual(values = #colours,"Genes",breaks = c("Control-Region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"),labels = c("Control #Region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"))+ opts(title = "Negative Log P-value of Mitochondrial Hits", #axis.text.x = theme_blank(), axis.title.y = theme_blank(), axis.title.x=theme_blank()) + layer(geom="text",mapping =aes(x,y,label = x),data = bdries,size=2.5)
+```
+
+Most common variants
+```{r, echo=FALSE}
+by_var_group <- group_by(genbank_count, pos, ref, alt, locus, type)
+by_var_cnt <- summarise(by_var_group,variants=sum(cnt))
+
+```
+
+Despite what this paper says A8860G is not a rare polymorphism at all.
+http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3258716/
+
+Most and least conserved loci
+
+
+Which haplogroups have the most private mutations
+```{r, echo=FALSE}
+europe<-c("H","I","J","K","R","T","U","V","W","X")
+africa<-c("L0","L1","L2","L3","L4","L5","L6")
+asia<-c("F","B","P","A","S","O","Y","N","M","Q","G","E","D","C","Z")
+genbank_count$region<-NA
+#assign europe, africa, asia to variants
+classify_haplogroups<-function(region_str){
+  #get the vector of hap prefixes from the region
+  #iterate over the prefixes and assign them all this region e.g. "europe"
+  sapply(eval(parse(text=region_str)),function(a_haplogroup_prefix){
+    str_detect(genbank_count$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
+  })
+}
+
+  sapply(europe,function(a_haplogroup_prefix){
+    str_detect(genbank_count$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
+  })
+
+
+aggs<-function(region){
+	agg<-list()
+	agg[["europe"]] <- "substring(haplogroup from 1 for 1)"
+	agg[["asia"]]   <- agg[["europe"]]
+	agg[["africa"]] <- "substring(haplogroup from 1 for 2)"
+	return(agg[[region]])
+}
+
+conditions<-function(region){paste((str_replace_all(region,pattern = "(.+)",replacement="OR haplogroup LIKE '\\1%'")),collapse=" ")}
+
+do_region<-function(region){
+	select_sql<-paste("SELECT ",aggs(region),", COUNT(*) as cnt FROM mitomap.genbank_haplogroup WHERE False")
+	group_by<-paste("GROUP BY",aggs(region)," ORDER BY cnt DESC")
+	sql<-paste(select_sql,conditions(eval(parse(text = region))),group_by)
+	rs <- dbSendQuery(con,sql)
+	results<-fetch(rs,n=-1)
+	results$percent<-round(prop.table(results$cnt)*100,2)
+	names(results)<-c("Haplogroup","Count","Percent")
+	results
+}
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
