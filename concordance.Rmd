@@ -99,4 +99,40 @@ do_region<-function(region){
 }
 ```
 
+How do the genbank sequences stratify
+```{r, echo=FALSE}
+rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt from mitomap.genbank limit 50000")
+gball <- fetch(rs, n = -1) # extract all rows
+gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
+gball$qnt[gball$qnt==':']<-'d'
+
+library(gdsfmt)
+library(SNPRelate)
+
+The minimum required variables are
+
+sample.id, a unique identifier for each sample.
+snp.id, a unique identifier for each SNP.
+snp.position, the base position of each SNP on the chromosome, and 0 for unknown position; it does not allow NA.
+snp.chromosome
+genotype, a SNP genotypic matrix. SNP-major mode: nsample×nsnp, individual-major mode: nsnp×nsample.
+
+
+```{r, echo=FALSE}
+There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp.
+
+So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
+
+
+How many MT snps are in dbSNP?
+```{r, echo=FALSE}
+library(SNPlocs.Hsapiens.dbSNP142.GRCh37)
+chMTsnps <- getSNPlocs("chMT")
+```
+
+There are `r as.numeric(getSNPcount()[["chMT"]])` mitochondrial snp positions in dbSNP, so 
+
+sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
+library(Vennerable)
+
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
