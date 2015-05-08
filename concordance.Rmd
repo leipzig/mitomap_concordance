@@ -5,14 +5,13 @@ date: "April 30, 2015"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+MITOMAP conducts periodic analysis of all full length (>15.4kbp) mitochondrial sequences in GenBank. This involves processing the nearly 30k sequences through MITOMASTER. While no means an unbiased survey, the GenBank set offers some interesting opportunities to study human mitochondrial variability.
 
 ```{r}
 library(ggplot2)
 library(dplyr)
 library(RPostgreSQL)
+library(stringr)
 con <- dbConnect(PostgreSQL(), user= "mitoadmin", password="Foni]Nesu&Huh?", dbname="mito", host="rescommapdb01.research.chop.edu")
 rs <- dbSendQuery(con,"select distinct on (genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos, ref, alt, haplogroup, cnt, locus_id")
 genbank_count <- fetch(rs, n = -1) # extract all rows
