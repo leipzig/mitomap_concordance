@@ -138,9 +138,12 @@ snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
 chMTsnps <- snplocs(snps,"chMT")
 ```
 
-There are `r as.numeric(getSNPcount()[["chMT"]])` mitochondrial snp positions in dbSNP, so 
+There are `r as.numeric(snpcount(snps)[["chMT"]])` mitochondrial snp positions in dbSNP and `r length(unique(sort(gball$tpos)))`
+
+There are `r length(unique(gball$snpid))` distinct mutations in the gb set.
 
 sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
+sum(unique(sort(gball$tpos)) %in% unique(sort(chMTsnps$loc)))
 library(Vennerable)
 
 3243A>G mutation
