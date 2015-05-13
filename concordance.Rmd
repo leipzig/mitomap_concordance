@@ -19,7 +19,7 @@ genbank_count <- fetch(rs, n = -1) # extract all rows
 types<-list("n"="non-coding","t"="tRNA","m"="coding","r"="rRNA")
 genbank_count$type<-sapply(genbank_count$type,function(x){types[[x]]})
 
-dbDisconnect(con)
+
 # > head(genbank_count)
 #   pos ref alt haplogroup cnt common_name
 # 1   5   A   C         B2   1         ATT
@@ -101,33 +101,41 @@ do_region<-function(region){
 
 How do the genbank sequences stratify
 ```{r, echo=FALSE}
-rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt from mitomap.genbank limit 50000")
+rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt from mitomap.genbank")
 gball <- fetch(rs, n = -1) # extract all rows
 gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
 gball$qnt[gball$qnt==':']<-'d'
-
+dbDisconnect(con)
 library(gdsfmt)
 library(SNPRelate)
 
-The minimum required variables are
+#The minimum required variables are
 
-sample.id, a unique identifier for each sample.
-snp.id, a unique identifier for each SNP.
-snp.position, the base position of each SNP on the chromosome, and 0 for unknown position; it does not allow NA.
-snp.chromosome
-genotype, a SNP genotypic matrix. SNP-major mode: nsample×nsnp, individual-major mode: nsnp×nsample.
+#sample.id, a unique identifier for each sample.
+#snp.id, a unique identifier for each SNP.
+#snp.position, the base position of each SNP on the chromosome, and 0 for unknown position; it does not allow NA.
+#snp.chromosome
+#genotype, a SNP genotypic matrix. SNP-major mode: nsample×nsnp, individual-major mode: nsnp×nsample.
 
+```
 
-```{r, echo=FALSE}
 There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
+D-Loop gets triple stranded during replication, with hypervariable regions
+
+phenylanlinian to proline is with coding areas
+within coding regions breakout tRNA
+
+
+
 
 How many MT snps are in dbSNP?
 ```{r, echo=FALSE}
-library(SNPlocs.Hsapiens.dbSNP142.GRCh37)
-chMTsnps <- getSNPlocs("chMT")
+library(SNPlocs.Hsapiens.dbSNP141.GRCh38)
+snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
+chMTsnps <- snplocs(snps,"chMT")
 ```
 
 There are `r as.numeric(getSNPcount()[["chMT"]])` mitochondrial snp positions in dbSNP, so 
@@ -135,4 +143,6 @@ There are `r as.numeric(getSNPcount()[["chMT"]])` mitochondrial snp positions in
 sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
 library(Vennerable)
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+3243A>G mutation
+
+
