@@ -12,7 +12,13 @@ library(ggplot2)
 library(dplyr)
 library(RPostgreSQL)
 library(stringr)
-con <- dbConnect(PostgreSQL(), user= "mitoadmin", password="Foni]Nesu&Huh?", dbname="mito", host="rescommapdb01.research.chop.edu")
+library(SNPlocs.Hsapiens.dbSNP141.GRCh38)
+library(gdsfmt)
+library(SNPRelate)
+library(Matrix)
+
+con <- dbConnect(PostgreSQL(), user= "mitoreadonly", password="pzme93$.", dbname="mito", host="rescommapdb01.research.chop.edu")
+
 rs <- dbSendQuery(con,"select distinct on (genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos, ref, alt, haplogroup, cnt, locus_id")
 genbank_count <- fetch(rs, n = -1) # extract all rows
 
@@ -78,36 +84,37 @@ classify_haplogroups<-function(region_str){
 
 
 aggs<-function(region){
-	agg<-list()
-	agg[["europe"]] <- "substring(haplogroup from 1 for 1)"
-	agg[["asia"]]   <- agg[["europe"]]
-	agg[["africa"]] <- "substring(haplogroup from 1 for 2)"
-	return(agg[[region]])
+agg<-list()
+agg[["europe"]] <- "substring(haplogroup from 1 for 1)"
+agg[["asia"]]   <- agg[["europe"]]
+agg[["africa"]] <- "substring(haplogroup from 1 for 2)"
+return(agg[[region]])
 }
 
 conditions<-function(region){paste((str_replace_all(region,pattern = "(.+)",replacement="OR haplogroup LIKE '\\1%'")),collapse=" ")}
 
 do_region<-function(region){
-	select_sql<-paste("SELECT ",aggs(region),", COUNT(*) as cnt FROM mitomap.genbank_haplogroup WHERE False")
-	group_by<-paste("GROUP BY",aggs(region)," ORDER BY cnt DESC")
-	sql<-paste(select_sql,conditions(eval(parse(text = region))),group_by)
-	rs <- dbSendQuery(con,sql)
-	results<-fetch(rs,n=-1)
-	results$percent<-round(prop.table(results$cnt)*100,2)
-	names(results)<-c("Haplogroup","Count","Percent")
-	results
+select_sql<-paste("SELECT ",aggs(region),", COUNT(*) as cnt FROM mitomap.genbank_haplogroup WHERE False")
+group_by<-paste("GROUP BY",aggs(region)," ORDER BY cnt DESC")
+sql<-paste(select_sql,conditions(eval(parse(text = region))),group_by)
+rs <- dbSendQuery(con,sql)
+results<-fetch(rs,n=-1)
+results$percent<-round(prop.table(results$cnt)*100,2)
+names(results)<-c("Haplogroup","Count","Percent")
+results
 }
 ```
 
-How do the genbank sequences stratify
+How do the genbank sequences stratify using a Principal Component Analysis? We would expect the major haplogroups to cluster.
+
+"The functions in SNPRelate for PCA include calculating the genetic covariance matrix from genotypes, computing the correlation coefficients between sample loadings and genotypes for each SNP, calculating SNP eigenvectors (loadings), and estimating the sample loadings of a new dataset from specified SNP eigenvectors."
+
 ```{r, echo=FALSE}
 rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt from mitomap.genbank")
 gball <- fetch(rs, n = -1) # extract all rows
-gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
 gball$qnt[gball$qnt==':']<-'d'
+gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
 dbDisconnect(con)
-library(gdsfmt)
-library(SNPRelate)
 
 #The minimum required variables are
 
@@ -116,10 +123,41 @@ library(SNPRelate)
 #snp.position, the base position of each SNP on the chromosome, and 0 for unknown position; it does not allow NA.
 #snp.chromosome
 #genotype, a SNP genotypic matrix. SNP-major mode: nsample×nsnp, individual-major mode: nsnp×nsample.
+# Create a gds file
+# The first argument should be a numeric matrix for SNP genotypes. There are possible values stored in the input genotype matrix: 0, 1, 2 and other values. “0” indicates two B alleles, “1” indicates one A allele and one B allele, “2” indicates two A alleles, and other values indicate a missing genotype. The SNP matrix can be either nsample×nsnp (snpfirstdim=FALSE, the argument in snpgdsCreateGeno()) or nsnp×nsample (snpfirstdim=TRUE).
+
+gbfac<-gball
+gbfac$genbank_id<-as.factor(gbfac$genbank_id)
+gbfac$snpid<-as.factor(gbfac$snpid)
+gbfac$tpos<-as.factor(gbfac$tpos)
+sparsey<-sparseMatrix(i = as.numeric(gbfac$genbank_id), j = as.numeric(gbfac$snpid))
+
+#convert logical matrix into 0's and 1's (not biallelic anyway)
+#haha genius https://stat.ethz.ch/pipermail/r-help/2011-January/265121.html
+numsparsey<-1*as.matrix(sparsey)
+
+#extract the position 73 from A73G 
+pos<-as.numeric(gsub("[A-Z]+([0-9]+).+", "\\1", levels(gbfac$snpid)))
+
+#extract the G from A73G
+alleles<-as.character(gsub("[A-Z]+[0-9]+(.+)", "\\1", levels(gbfac$snpid)))
+
+#create the gds file
+genos<-snpgdsCreateGeno("mitogb.gds", genmat = numsparsey,
+    sample.id = levels(gbfac$genbank_id), snp.id = levels(gbfac$snpid),
+    snp.chromosome = rep('MT',length(levels(gbfac$snpid))),
+    snp.position = pos,
+    snp.allele = alleles, snpfirstdim=FALSE)
+
+genofile <- snpgdsOpen("mitogb.gds")
+
+#plot the PCA
+#RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16)
+
 
 ```
 
-There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp.
+There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these belong to only one sequence.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
@@ -133,7 +171,7 @@ within coding regions breakout tRNA
 
 How many MT snps are in dbSNP?
 ```{r, echo=FALSE}
-library(SNPlocs.Hsapiens.dbSNP141.GRCh38)
+
 snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
 chMTsnps <- snplocs(snps,"chMT")
 ```
@@ -147,5 +185,3 @@ sum(unique(sort(gball$tpos)) %in% unique(sort(chMTsnps$loc)))
 library(Vennerable)
 
 3243A>G mutation
-
-
