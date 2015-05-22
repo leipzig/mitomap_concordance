@@ -70,38 +70,38 @@ africa<-c("L0","L1","L2","L3","L4","L5","L6")
 asia<-c("F","B","P","A","S","O","Y","N","M","Q","G","E","D","C","Z")
 genbank_count$region<-NA
 #assign europe, africa, asia to variants
-classify_haplogroups<-function(region_str){
-  #get the vector of hap prefixes from the region
-  #iterate over the prefixes and assign them all this region e.g. "europe"
-  sapply(eval(parse(text=region_str)),function(a_haplogroup_prefix){
-    str_detect(genbank_count$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
+#get the vector of hap prefixes from the region
+#iterate over the prefixes and assign them all this region e.g. "europe"
+get_region_logical_lists<-function(regionprefixes){
+    lapply(regionprefixes,function(a_haplogroup_prefix){
+      str_detect(genbank_count$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
   })
 }
-
-  sapply(europe,function(a_haplogroup_prefix){
-    str_detect(genbank_count$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
-  })
+genbank_count[Reduce("|",get_region_logical_lists(asia)),"Region"]<-"Asia"
+genbank_count[Reduce("|",get_region_logical_lists(africa)),"Region"]<-"Africa"
+genbank_count[Reduce("|",get_region_logical_lists(europe)),"Region"]<-"Europe"
+```
 
 
 aggs<-function(region){
-agg<-list()
-agg[["europe"]] <- "substring(haplogroup from 1 for 1)"
-agg[["asia"]]   <- agg[["europe"]]
-agg[["africa"]] <- "substring(haplogroup from 1 for 2)"
-return(agg[[region]])
+  agg<-list()
+  agg[["europe"]] <- "substring(haplogroup from 1 for 1)"
+  agg[["asia"]]   <- agg[["europe"]]
+  agg[["africa"]] <- "substring(haplogroup from 1 for 2)"
+  return(agg[[region]])
 }
 
 conditions<-function(region){paste((str_replace_all(region,pattern = "(.+)",replacement="OR haplogroup LIKE '\\1%'")),collapse=" ")}
 
 do_region<-function(region){
-select_sql<-paste("SELECT ",aggs(region),", COUNT(*) as cnt FROM mitomap.genbank_haplogroup WHERE False")
-group_by<-paste("GROUP BY",aggs(region)," ORDER BY cnt DESC")
-sql<-paste(select_sql,conditions(eval(parse(text = region))),group_by)
-rs <- dbSendQuery(con,sql)
-results<-fetch(rs,n=-1)
-results$percent<-round(prop.table(results$cnt)*100,2)
-names(results)<-c("Haplogroup","Count","Percent")
-results
+  select_sql<-paste("SELECT ",aggs(region),", COUNT(*) as cnt FROM mitomap.genbank_haplogroup WHERE False")
+  group_by<-paste("GROUP BY",aggs(region)," ORDER BY cnt DESC")
+  sql<-paste(select_sql,conditions(eval(parse(text = region))),group_by)
+  rs <- dbSendQuery(con,sql)
+  results<-fetch(rs,n=-1)
+  results$percent<-round(prop.table(results$cnt)*100,2)
+  names(results)<-c("Haplogroup","Count","Percent")
+  results
 }
 ```
 
@@ -114,7 +114,30 @@ rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt from mitomap.genbank")
 gball <- fetch(rs, n = -1) # extract all rows
 gball$qnt[gball$qnt==':']<-'d'
 gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
+
+
+
+rs <- dbSendQuery(con,"select genbank_id, haplogroup, haplogroup_verbose from mitomap.genbank_haplogroup")
+gbhap <- fetch(rs, n = -1) # extract all rows
+get_region_logical_lists_gb_hap<-function(regionprefixes){
+    lapply(regionprefixes,function(a_haplogroup_prefix){
+      str_detect(gbhap$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
+  })
+}
+gbhap$Region<-NA
+gbhap[Reduce("|",get_region_logical_lists_gb_hap(asia)),"Region"]<-"Asia"
+gbhap[Reduce("|",get_region_logical_lists_gb_hap(africa)),"Region"]<-"Africa"
+gbhap[Reduce("|",get_region_logical_lists_gb_hap(europe)),"Region"]<-"Europe"
 dbDisconnect(con)
+```
+The breakdown of GenBank sequences by region
+```{r, echo=FALSE}
+kable(table(gbhap$Region))
+```
+Which regions have the most private mutations?
+```{r, echo=FALSE}
+kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$Region),2)*100)
+```
 
 #The minimum required variables are
 
@@ -130,6 +153,10 @@ gbfac<-gball
 gbfac$genbank_id<-as.factor(gbfac$genbank_id)
 gbfac$snpid<-as.factor(gbfac$snpid)
 gbfac$tpos<-as.factor(gbfac$tpos)
+
+#can we reduce this a bit?
+snpidsForPCA<-table(gbfac$snpid)[intersect(which(table(gbfac$snpid)<20000),which(table(gbfac$snpid)>20))]
+
 sparsey<-sparseMatrix(i = as.numeric(gbfac$genbank_id), j = as.numeric(gbfac$snpid))
 
 #convert logical matrix into 0's and 1's (not biallelic anyway)
@@ -143,21 +170,37 @@ pos<-as.numeric(gsub("[A-Z]+([0-9]+).+", "\\1", levels(gbfac$snpid)))
 alleles<-as.character(gsub("[A-Z]+[0-9]+(.+)", "\\1", levels(gbfac$snpid)))
 
 #create the gds file
-genos<-snpgdsCreateGeno("mitogb.gds", genmat = numsparsey,
-    sample.id = levels(gbfac$genbank_id), snp.id = levels(gbfac$snpid),
-    snp.chromosome = rep('MT',length(levels(gbfac$snpid))),
-    snp.position = pos,
-    snp.allele = alleles, snpfirstdim=FALSE)
-
+#26 is MT
+if (! file.exists("mito_gb.gds")){
+  snpgdsCreateGeno("mitogb.gds", genmat = numsparsey,
+      sample.id = levels(gbfac$genbank_id), snp.id = levels(gbfac$snpid),
+      snp.chromosome = rep(26,length(levels(gbfac$snpid))),
+      snp.position = pos,
+      snp.allele = alleles, snpfirstdim=FALSE)
+}
 genofile <- snpgdsOpen("mitogb.gds")
+snp_subset<-levels(gbfac$snpid)[1:2000]
+sample_subset<-levels(gbfac$genbank_id)[1:2000]
+PCA<-snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,missing.rate=.1,eigen.cnt=2,sample.id = sample_subset,snp.id = snp_subset)
+
+
+tab <- data.frame(sample.id = PCA$sample.id,
+                  pop = factor(pop_code)[match(pca$sample.id, sample.id)],
+    EV1 = PCA$eigenvect[,1],    # the first eigenvector
+    EV2 = PCA$eigenvect[,2],    # the second eigenvector
+    stringsAsFactors = FALSE)
+
+
 
 #plot the PCA
 #RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16)
 
 
+#RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,missing.rate=.1,eigen.cnt=2)
+
 ```
 
-There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these belong to only one sequence.
+There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these are truly priviate mutations belonging to only one sequence.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
