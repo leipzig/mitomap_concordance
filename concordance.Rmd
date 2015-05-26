@@ -17,16 +17,36 @@ library(gdsfmt)
 library(SNPRelate)
 library(Matrix)
 library(knitr)
+library(RColorBrewer)
 
 con <- dbConnect(PostgreSQL(), user= "mitoreadonly", password="pzme93$.", dbname="mito", host="rescommapdb01.research.chop.edu")
 
-rs <- dbSendQuery(con,"select distinct on (genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY pos, ref, alt, haplogroup, cnt, locus_id")
+rs <- dbSendQuery(con,"select distinct on (locus_id, genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY locus_id, pos, ref, alt, haplogroup, cnt, locus_id")
 genbank_count <- fetch(rs, n = -1) # extract all rows
+
+rs <- dbSendQuery(con,"select genbank_id, haplogroup, haplogroup_verbose from mitomap.genbank_haplogroup")
+gbhap <- fetch(rs, n = -1) # extract all rows
+
+rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt, haplogroup, disease, ismmut from mitomap.genbank")
+gball <- fetch(rs, n = -1) # extract all rows
 
 types<-list("n"="non-coding","t"="tRNA","m"="coding","r"="rRNA")
 genbank_count$type<-sapply(genbank_count$type,function(x){types[[x]]})
 
+rs <-  dbSendQuery(con,"select * from mitomaster.locus")
+loci <-  fetch(rs, n = -1) # extract all rows
+getlocilengths<-function(x){
+  if(as.integer(x['ending'])>=as.integer(x['starting'])){
+    return(as.integer(x['ending'])-as.integer(x['starting'])+1)
+  }else{
+    return((16569-as.integer(x['starting']))+as.integer(x['ending'])+1)
+  }
+}
 
+loci$length<-apply(loci,1,getlocilengths)
+get_length<-function(locus){
+  return(as.integer(loci[loci$common_name==locus[1],"length"]))
+}
 # > head(genbank_count)
 #   pos ref alt haplogroup cnt common_name
 # 1   5   A   C         B2   1         ATT
@@ -41,11 +61,11 @@ Variant frequency by position
 
 ```{r, echo=FALSE}
 by_pos <- group_by(genbank_count, pos, locus, type)
-hist_pos <- summarise(by_pos,variants=sum(cnt))
+hist_pos <- summarise(by_pos,maf=sum(cnt)*100/nrow(gbhap),ln_tot=log(sum(cnt)))
 #ggplot(data=hist_pos,aes(pos,variants))+geom_point(stat="identity")
 #http://www.gettinggeneticsdone.com/2013/11/a-mitochondrial-manhattan-plot.html
 #https://github.com/hadley/ggplot2/wiki/Plotting-Mitochondrial-Genetic-Association-Results
-p <- ggplot(hist_pos, aes(x = pos,y = variants,color = type)) + geom_point()+ coord_polar(direction = -1) 
+p <- ggplot(hist_pos, aes(x = pos,y = maf,color = type)) + geom_point()+ coord_polar(direction = -1) 
 print(p)
 
 #+ geom_line(aes(x,1.30,color = "red"),data = lines) + facet_grid(.~race2) + geom_line(aes(y=extraline)) + geom_point(aes(x,y,color = gene),data=lines) + scale_colour_manual(values = #colours,"Genes",breaks = c("Control-region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"),labels = c("Control #region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"))+ opts(title = "Negative Log P-value of Mitochondrial Hits", #axis.text.x = theme_blank(), axis.title.y = theme_blank(), axis.title.x=theme_blank()) + layer(geom="text",mapping =aes(x,y,label = x),data = bdries,size=2.5)
@@ -54,6 +74,7 @@ print(p)
 Most common variants
 ```{r, echo=FALSE}
 by_var_group <- group_by(genbank_count, pos, ref, alt, locus, type)
+
 by_var_cnt <- summarise(by_var_group,variants=sum(cnt))
 
 ```
@@ -61,8 +82,23 @@ by_var_cnt <- summarise(by_var_group,variants=sum(cnt))
 Despite what this paper says A8860G is not a rare polymorphism at all.
 http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3258716/
 
-Most and least conserved loci
+Most and least conserved loci (over 20 bp, beware overlapping annotation)
+```{r, echo=FALSE}
+group_by(genbank_count, locus, type) %>% mutate(length=get_length(locus)) %>% summarise(total_variants=sum(cnt),rate=sum(cnt)/mean(length),length=mean(length)) -> loci_conservation
+```
+Least Conserved
+```{r, echo=FALSE}
+kable(subset(loci_conservation[order(-loci_conservation$rate),],length>20))
+```
+Most Conserved
+```{r, echo=FALSE}
+kable(subset(loci_conservation[order(loci_conservation$rate),],length>20))
+```
 
+Multiple regressions are evident by locus type
+```{r, echo=FALSE}
+ggplot(loci_conservation,aes(length,total_variants,color=type))+geom_point()+geom_smooth( method=lm, se=FALSE)
+```
 
 Which haplogroups have the most private mutations
 ```{r, echo=FALSE}
@@ -116,15 +152,27 @@ return_prefix<-function(haplogroup){
 
 How do the genbank sequences stratify using a Principal Component Analysis? We would expect the major haplogroups to cluster.
 
+PCA is really a geometric operation in which they use an operation to find a few which variables tend to flock together, starting with the one that produces the most variance. You can generally a lot of principal components but generally you just look at the first two to keep things in 2D.
+
+
 "The functions in SNPRelate for PCA include calculating the genetic covariance matrix from genotypes, computing the correlation coefficients between sample loadings and genotypes for each SNP, calculating SNP eigenvectors (loadings), and estimating the sample loadings of a new dataset from specified SNP eigenvectors."
 
+In a normal PCA the covariance matrix is composed of scalars, but you can generate a PCA of SNPs for biallelic you would generally score homozygous alternate as 2, hemizygous as 1, and all reference as 0. With the mitochondria we just score REF and ALT.
 ```{r, echo=FALSE}
 
 
+gball$qnt[gball$qnt==':']<-'d'
+gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
+gball<-get_region(gball)
+gball %>% group_by(haplogroup) %>% mutate(prefix = return_prefix(haplogroup)) %>% ungroup -> gball
+
+gbfac<-gball
+gbfac$genbank_id<-as.factor(gbfac$genbank_id)
+gbfac$snpid<-as.factor(gbfac$snpid)
+gbfac$tpos<-as.factor(gbfac$tpos)
 
 
-rs <- dbSendQuery(con,"select genbank_id, haplogroup, haplogroup_verbose from mitomap.genbank_haplogroup")
-gbhap <- fetch(rs, n = -1) # extract all rows
+
 gbhap<-get_region(gbhap)
 gbhap %>% group_by(haplogroup) %>% mutate(prefix = return_prefix(haplogroup)) %>% ungroup -> gbhap
 
@@ -133,18 +181,26 @@ The breakdown of GenBank sequences by region
 ```{r, echo=FALSE}
 kable(as.data.frame(table(gbhap$region)))
 ```
-Which regions have the most private mutations?
+Which regions have the most private mutations? i.e. how many haplogroups fall slightly outside of Phylotree?
 ```{r, echo=FALSE}
 kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),2)*100)
 ```
 
 Which haplogroups have the most disease entries?
+
+These are dominated by major depressive associated mtuation in Asia
+Altered brain pH in Europeans
+LHON disorders all pretty high in Europenas
 ```{r, echo=FALSE}
 prop.table(table(gball$ismmut,gball$region),2)
 
 prop.table(table(gball$ismmut,gball$prefix),2)
 #these are out of the more than 1 million variants among the entire set
-
+```
+Many diseases have very different rates by region
+```{r, echo=FALSE}
+kable(round(prop.table(table(gball$disease[gball$disease!=''],gball$region[gball$disease!='']))*100,digits=3))
+```
 
 #The minimum required variables are
 
@@ -155,17 +211,7 @@ prop.table(table(gball$ismmut,gball$prefix),2)
 #genotype, a SNP genotypic matrix. SNP-major mode: nsample×nsnp, individual-major mode: nsnp×nsample.
 # Create a gds file
 # The first argument should be a numeric matrix for SNP genotypes. There are possible values stored in the input genotype matrix: 0, 1, 2 and other values. “0” indicates two B alleles, “1” indicates one A allele and one B allele, “2” indicates two A alleles, and other values indicate a missing genotype. The SNP matrix can be either nsample×nsnp (snpfirstdim=FALSE, the argument in snpgdsCreateGeno()) or nsnp×nsample (snpfirstdim=TRUE).
-rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt, haplogroup, ismmut from mitomap.genbank")
-gball <- fetch(rs, n = -1) # extract all rows
-gball$qnt[gball$qnt==':']<-'d'
-gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
-gball<-get_region(gball)
-gball %>% group_by(haplogroup) %>% mutate(prefix = return_prefix(haplogroup)) %>% ungroup -> gball
 
-gbfac<-gball
-gbfac$genbank_id<-as.factor(gbfac$genbank_id)
-gbfac$snpid<-as.factor(gbfac$snpid)
-gbfac$tpos<-as.factor(gbfac$tpos)
 
 #can we reduce this a bit?
 snpidsForPCA<-table(gbfac$snpid)[intersect(which(table(gbfac$snpid)<20000),which(table(gbfac$snpid)>20))]
@@ -193,29 +239,63 @@ if (! file.exists("mito_gb.gds")){
 }
 genofile <- snpgdsOpen("mitogb.gds")
 snp_subset<-levels(gbfac$snpid) #[sample(1:length(levels(gbfac$snpid)),5000)]
-sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),5000)]
+sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),1000)]
 
 PCA<-snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,eigen.cnt=2,sample.id = sample_subset,snp.id = snp_subset)
 
-gbhap$africa_only<-apply(gbhap,1,function(x){if(x['region']=='Africa'){return(x['prefix'])}else{return(x['region'])}})
+gbhap$africa_breakdown<-apply(gbhap,1,function(x){if(x['region']=='Africa'){return(x['prefix'])}else{return(x['region'])}})
 
 
 tab <- data.frame(sample.id = PCA$sample.id,
                   pop = gbhap[match(PCA$sample.id,gbhap$genbank_id),"region"],
                   pre = gbhap[match(PCA$sample.id,gbhap$genbank_id),"prefix"],
-                  afronly = gbhap[match(PCA$sample.id,gbhap$genbank_id),"africa_only"],
+                  afronly = gbhap[match(PCA$sample.id,gbhap$genbank_id),"africa_breakdown"],
     EV1 = PCA$eigenvect[,1],    # the first eigenvector
     EV2 = PCA$eigenvect[,2],    # the second eigenvector
     stringsAsFactors = FALSE)
-ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=region))
+tab$region<- factor(tab$region, levels = c("Asia", "Europe", "Africa"))
+tab$africa_breakdown<- factor(tab$africa_breakdown, levels = c("Asia", "Europe", "L0", "L1","L2","L3","L4","L5","L6"))
+
+
+myColors <- brewer.pal(9,"Set1")
+names(myColors) <- levels(tab$region)
+colScale <- scale_colour_manual(name = "region",values = myColors)
+
+ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=region))+colScale
 ```
 The regional PCA is interesting. If we provide a breakdown just by Africa:
 ```{r, echo=FALSE}
-ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=afronly))
+names(myColors) <- levels(tab$africa_breakdown)
+colScale <- scale_colour_manual(name = "africa_breakdown",values = myColors)
+ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=africa_breakdown))+colScale
+
+africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))
+my_subset<-africa_only
 ```
-This makes more sense if we view
+This makes more sense if we view. L0
 http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2427203/bin/gr1.jpg
 
+
+Now let's just at PCAs of the regions
+```{r doregion, echo=FALSE}
+
+PCA<-snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,eigen.cnt=2,sample.id = my_subset,snp.id = snp_subset)
+tab <- data.frame(sample.id = PCA$sample.id,
+                  pop = gbhap[match(PCA$sample.id,gbhap$genbank_id),"region"],
+                  pre = gbhap[match(PCA$sample.id,gbhap$genbank_id),"prefix"],
+    EV1 = PCA$eigenvect[,1],    # the first eigenvector
+    EV2 = PCA$eigenvect[,2],    # the second eigenvector
+    stringsAsFactors = FALSE)
+ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=prefix))
+
+```
+Europe
+```{r, echo=FALSE}
+my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))),1000)]
+```
+
+```{r europe, ref.label='doregion'}
+```
 
 #plot the PCA
 #RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16)
