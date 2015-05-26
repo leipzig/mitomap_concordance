@@ -18,35 +18,9 @@ library(SNPRelate)
 library(Matrix)
 library(knitr)
 library(RColorBrewer)
+library("Biostrings")
 
-con <- dbConnect(PostgreSQL(), user= "mitoreadonly", password="pzme93$.", dbname="mito", host="rescommapdb01.research.chop.edu")
 
-rs <- dbSendQuery(con,"select distinct on (locus_id, genbank_count.pos,genbank_count.ref,genbank_count.alt,genbank_count.haplogroup,genbank_count.cnt) genbank_count.*, common_name as locus, type from mitomap.genbank_count LEFT JOIN mitomaster.locus ON (starting <= ending AND starting<=pos AND ending>=pos) OR (ending < starting AND (pos <=ending OR pos >=starting)) ORDER BY locus_id, pos, ref, alt, haplogroup, cnt, locus_id")
-genbank_count <- fetch(rs, n = -1) # extract all rows
-
-rs <- dbSendQuery(con,"select genbank_id, haplogroup, haplogroup_verbose from mitomap.genbank_haplogroup")
-gbhap <- fetch(rs, n = -1) # extract all rows
-
-rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt, haplogroup, disease, ismmut from mitomap.genbank")
-gball <- fetch(rs, n = -1) # extract all rows
-
-types<-list("n"="non-coding","t"="tRNA","m"="coding","r"="rRNA")
-genbank_count$type<-sapply(genbank_count$type,function(x){types[[x]]})
-
-rs <-  dbSendQuery(con,"select * from mitomaster.locus")
-loci <-  fetch(rs, n = -1) # extract all rows
-getlocilengths<-function(x){
-  if(as.integer(x['ending'])>=as.integer(x['starting'])){
-    return(as.integer(x['ending'])-as.integer(x['starting'])+1)
-  }else{
-    return((16569-as.integer(x['starting']))+as.integer(x['ending'])+1)
-  }
-}
-
-loci$length<-apply(loci,1,getlocilengths)
-get_length<-function(locus){
-  return(as.integer(loci[loci$common_name==locus[1],"length"]))
-}
 # > head(genbank_count)
 #   pos ref alt haplogroup cnt common_name
 # 1   5   A   C         B2   1         ATT
@@ -60,15 +34,27 @@ get_length<-function(locus){
 Variant frequency by position
 
 ```{r, echo=FALSE}
-by_pos <- group_by(genbank_count, pos, locus, type)
-hist_pos <- summarise(by_pos,maf=sum(cnt)*100/nrow(gbhap),ln_tot=log(sum(cnt)))
 #ggplot(data=hist_pos,aes(pos,variants))+geom_point(stat="identity")
 #http://www.gettinggeneticsdone.com/2013/11/a-mitochondrial-manhattan-plot.html
 #https://github.com/hadley/ggplot2/wiki/Plotting-Mitochondrial-Genetic-Association-Results
-p <- ggplot(hist_pos, aes(x = pos,y = maf,color = type)) + geom_point()+ coord_polar(direction = -1) 
-print(p)
 
-#+ geom_line(aes(x,1.30,color = "red"),data = lines) + facet_grid(.~race2) + geom_line(aes(y=extraline)) + geom_point(aes(x,y,color = gene),data=lines) + scale_colour_manual(values = #colours,"Genes",breaks = c("Control-region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"),labels = c("Control #region","tRNA","rRNA","Non-Coding","ND1","ND2","CO1","CO2","ATP8","ATP6","CO3","ND3","ND4L","ND4","ND5","ND6","CYB"))+ opts(title = "Negative Log P-value of Mitochondrial Hits", #axis.text.x = theme_blank(), axis.title.y = theme_blank(), axis.title.x=theme_blank()) + layer(geom="text",mapping =aes(x,y,label = x),data = bdries,size=2.5)
+by_pos <- group_by(genbank_count, pos, locus, type, pretty_name)
+hist_pos <- summarise(by_pos,maf=sum(cnt)*100/nrow(gbhap),ln_tot=log(sum(cnt)))
+
+#these are the outer band of gene labels
+gene_lines <- data.frame(pos = seq(1,16569,by=1),y = 100)
+gene_lines$locus<-sapply(gene_lines$pos,get_locus)
+gene_lines$type<-sapply(gene_lines$pos,get_type)
+gene_lines$pretty_name<-apply(gene_lines,1,get_pretty_name)
+group_by(gene_lines,pretty_name) %>%   filter(pretty_name != 'rRNA' & pretty_name != 'tRNA' & pretty_name != 'non-coding') %>% summarize(pos=mean(pos)) -> bdries
+bdries[bdries$pretty_name=='D-Loop/Control Region',"pos"]<-50
+bdries$y<-105
+
+ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name)) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
+xlab("Mitochondrial Base-Pair Location") +
+ylab("MAF") +
+ggtitle("MAF of Mitochondrial GenBank Variants") +
+layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=2.5)
 ```
 
 Most common variants
@@ -187,10 +173,7 @@ kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),
 ```
 
 Which haplogroups have the most disease entries?
-
-These are dominated by major depressive associated mtuation in Asia
-Altered brain pH in Europeans
-LHON disorders all pretty high in Europenas
+These are the proportion of disease variants among all variants for each of these populations
 ```{r, echo=FALSE}
 prop.table(table(gball$ismmut,gball$region),2)
 
@@ -198,10 +181,45 @@ prop.table(table(gball$ismmut,gball$prefix),2)
 #these are out of the more than 1 million variants among the entire set
 ```
 Many diseases have very different rates by region
+
+These are dominated by major depressive associated mtuation in Asia
+Altered brain pH in Europeans
+LHON disorders all pretty high in Europenas
 ```{r, echo=FALSE}
-kable(round(prop.table(table(gball$disease[gball$disease!=''],gball$region[gball$disease!='']))*100,digits=3))
+gball$disease_anno<-ifelse(gball$disease=='','',paste(gball$disease,gball$snpid))
+kable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
 ```
 
+prop.table(table(gball$disease[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3)
+
+table(gball$disease[gball$disease_anno!=''],gball$region[gball$disease_anno!=''])
+#can we set up contigency tables
+numAfr<-table(gbhap$region)[['Africa']]
+numEur<-table(gbhap$region)[['Europe']]
+numAsia<-table(gbhap$region)[['Asia']]
+
+fishme<-function(x){
+  afr<-as.numeric(x[['Africa']])
+  afr_nosnp<-numAfr-afr
+  
+  nonafr<-as.numeric(x[['Europe']])+as.numeric(x[['Asia']])
+  nonafr_nosnp<-numEur+numAsia-nonafr
+  
+  disease<-matrix(c(afr,nonafr,afr_nosnp,nonafr_nosnp),
+       nrow = 2,
+       dimnames = list(SNP = c("Afr", "Non-Afr"),
+                       NoSNP = c("Afr", "Non-Afr")))
+  fisher.test(disease, alternative = "two.sided")[['p.value']]
+}
+
+afr_disease_pvals<-apply(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']),1,fishme)
+adj_afr_disease_pvals<-p.adjust(afr_disease_pvals, method = 'BH')
+
+#there are many that segregate by population
+adj_afr_disease_pvals_below_thresh<-adj_afr_disease_pvals[adj_afr_disease_pvals<0.01]
+
+kable(sort(adj_afr_disease_pvals_below_thresh))
+```{r, echo=FALSE}
 #The minimum required variables are
 
 #sample.id, a unique identifier for each sample.
@@ -238,9 +256,17 @@ if (! file.exists("mito_gb.gds")){
       snp.allele = alleles, snpfirstdim=FALSE)
 }
 genofile <- snpgdsOpen("mitogb.gds")
-snp_subset<-levels(gbfac$snpid) #[sample(1:length(levels(gbfac$snpid)),5000)]
-sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),1000)]
 
+#take all snps
+snp_subset<-levels(gbfac$snpid)
+
+MASTER_SAMPLE_NUMBER<-500
+if(MASTER_SAMPLE_NUMBER){
+  sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),MASTER_SAMPLE_NUMBER)]
+}else{
+  sample_subset<-levels(gbfac$genbank_id)
+}
+  
 PCA<-snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,eigen.cnt=2,sample.id = sample_subset,snp.id = snp_subset)
 
 gbhap$africa_breakdown<-apply(gbhap,1,function(x){if(x['region']=='Africa'){return(x['prefix'])}else{return(x['region'])}})
@@ -269,7 +295,12 @@ names(myColors) <- levels(tab$africa_breakdown)
 colScale <- scale_colour_manual(name = "africa_breakdown",values = myColors)
 ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=africa_breakdown))+colScale
 
-africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))
+if(MASTER_SAMPLE_NUMBER){
+  africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))),MASTER_SAMPLE_NUMBER)]
+}else{
+  africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))
+
+}
 my_subset<-africa_only
 ```
 This makes more sense if we view. L0
@@ -291,7 +322,11 @@ ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=prefix))
 ```
 Europe
 ```{r, echo=FALSE}
-my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))),1000)]
+if(MASTER_SAMPLE_NUMBER){
+my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))),MASTER_SAMPLE_NUMBER)]
+}else{
+  my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))
+}
 ```
 
 ```{r europe, ref.label='doregion'}
@@ -335,17 +370,60 @@ library(Vennerable)
 3243A>G mutation
 
 
-Are there associations between SNPs that are not defined by the haplogroups themselves? Market basket analysis is one way to look at this, where we consider that we have 30,000 shoppers choosing among 9919 SNPs. Market basket is a type of association rule mining using in economics, this is often called the diapers and beer study, since it discovered those two items are most strongly associated.
+Are there associations between SNPs that are not defined by the haplogroups themselves? Market basket analysis is one way to look at this, where we consider that we have 30,000 shoppers choosing among 9919 SNPs. Market basket is a type of association rule mining using in economics, this is often called the diapers and beer study, since it discovered those two items are strongly associated.
+
+In most cases this type of analysis on SNPs alone will usually only reveal the existing haplogroup structure or (they simply identify the equivalent of tag SNPs), so it is perhaps most interesting when we view SNPs that span multiple regions and have low penetrance. It is conceivable that certain mutations convergent evolution toward similar combinations of SNPs that this can reveal.
+
+If we combine it with phenotype it might be able to reveal combinations of SNPs that would escape GWAS, especially if we have a few haplogroups with elevated rates of a disease.
+
 ```{r, echo=FALSE}
 imatrix<-as(numsparsey, "itemMatrix")
-dimnmaes(imatrix)[[2]]<-levels(gbfac$snpid)
+dimnames(imatrix)[[1]]<-levels(gbfac$genbank_id)
+
 dimnames(imatrix)[[2]]<-levels(gbfac$snpid)
 
 rules <- apriori(imatrix)
 summary(rules)
 rules.sorted<-sort(rules,by="lift")
+
+disease_snps<-str_extract(names(sort(adj_afr_disease_pvals_below_thresh)),'\\S+$')
+
+getRules<-function(snp){
+  rules <- apriori(imatrix,appearance = list(rhs=snp,default='lhs'))
+  return(length(rules))
+}
+
+disease_rules<-lapply(disease_snps,getRules)
+```
+
+What about conservation? There is little correlation between intra and inter species conservation at the gene level.
+```{r, echo=FALSE}
+filename<-"mito-conservation-index/makeTables/39MSAs/35_CYTB.fa"
+seqs<-readAAStringSet(filename)
+str_extract(filename,"([0-9]+)_([A-Za-z0-9]+).fa")
+matches<-str_match(filename,"([0-9]+)_([A-Za-z0-9]+).fa")
+loci<-matches[2]
+commonName<-matches[3]
+seqMatrix<-as.matrix(seqs)
+#i don't care for gaps
+seqMatrix<-seqMatrix[,-which(seqMatrix[1,]=='-')]
+of39<-apply(seqMatrix,2,FUN=function(x){length(which(x==x[1]))})
+df<-data.frame(loci=loci,common=commonName,aa_pos=1:length(of39),of39=of39)
+#write.table(df,file=outfile,sep="\t",quote=FALSE,row.names=FALSE)
+#confirmRCSlen<-paste(seqMatrix[1,],collapse="")
+#write(confirmRCSlen,file=paste('geneSizes/',commonName,':',str_length(confirmRCSlen),'bp',sep=""))
+of39df<-data.frame(x=1:length(of39),inter=(39-of39)*100/39)
+
+#try to put his in AA coords
+genbank_count %>% filter(locus=='Cytb') %>% group_by(x=floor((pos-14749)/3)+1) %>% summarize(intra=sum(cnt)*100/nrow(gbhap)) -> cytb_conservation
+
+bycytb<-merge(of39df,cytb_conservation,by="x",all.x=TRUE)
+#no snps
+bycytb[is.na(bycytb$intra),"intra"]<-0
+melt_bycytb<-melt(bycytb,id="x")
+ggplot(melt_bycytb,aes(x=x,y=value))+geom_point(aes(color=variable))+xlab("AA_pos")+ylab("Pseudo-MAF")+title("Cytb")
 ```
 
 ```{r, echo=FALSE}
-dbDisconnect(con)
+
 ```

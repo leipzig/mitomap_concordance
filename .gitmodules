@@ -1,0 +1,3 @@
+[submodule "mito-conservation-index"]
+	path = mito-conservation-index
+	url = https://github.com/leipzig/mito-conservation-index.git
