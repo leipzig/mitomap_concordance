@@ -15,7 +15,6 @@ rs <- dbSendQuery(con,"select * from mitomaster.conservation")
 cons <- fetch(rs, n = -1)
 
 types<-list("n"="non-coding","t"="tRNA","m"="coding","r"="rRNA")
-genbank_count$type<-sapply(genbank_count$type,function(x){types[[x]]})
 
 rs <-  dbSendQuery(con,"select * from mitomaster.locus")
 loci <-  fetch(rs, n = -1) # extract all rows
@@ -28,9 +27,7 @@ getlocilengths<-function(x){
 }
 
 loci$length<-apply(loci,1,getlocilengths)
-get_length<-function(locus){
-  return(as.integer(loci[loci$common_name==locus[1],"length"]))
-}
+
 
 get_locus<-function(pos){
   reg_candidates<-loci[loci$length>0 & loci$ending>=loci$starting & pos>=loci$starting & pos<=loci$ending,]
@@ -45,9 +42,10 @@ get_type<-function(pos){
   pol_candidates<-loci[loci$length>0 & loci$starting>loci$ending & (pos>=loci$starting | pos<=loci$ending),]
   candidates<-rbind(reg_candidates,pol_candidates)
   #choose the shortest one
-  return(unlist(types[[candidates[order(candidates$length),"type"][1]]]))
+  return(as.character(types[[candidates[order(candidates$length),"type"][1]]]))
 }
 
+#this is a simplified locus list for the radial plot
 get_pretty_name<-function(x){
   if(as.numeric(x[['pos']])>=16024 | as.numeric(x[['pos']])<=576){return('D-Loop/Control Region')}
   if(x[['type']]=='coding'){return(x[['locus']])}
@@ -57,5 +55,30 @@ genbank_count$locus<-sapply(genbank_count$pos,get_locus)
 genbank_count$type<-sapply(genbank_count$pos,get_type)
 genbank_count$pretty_name<-apply(genbank_count,1,get_pretty_name)
 
+#these are the outer band of gene labels
+gene_lines <- data.frame(pos = seq(1,16569,by=1),y = 100)
+gene_lines$locus<-sapply(gene_lines$pos,get_locus)
+gene_lines$type<-sapply(gene_lines$pos,get_type)
+gene_lines$pretty_name<-apply(gene_lines,1,get_pretty_name)
+
+genbank_count$alt[genbank_count$alt==':']<-'d'
+genbank_count$snpid<-paste(genbank_count$ref,genbank_count$pos,genbank_count$alt,sep="")
+
+
+gball$qnt[gball$qnt==':']<-'d'
+gball$snpid<-paste(gball$tnt,gball$tpos,gball$qnt,sep="")
+gball<-get_region(gball)
+gball %>% group_by(haplogroup) %>% mutate(prefix = return_prefix(haplogroup)) %>% ungroup -> gball
+
+gbfac<-gball
+gbfac$genbank_id<-as.factor(gbfac$genbank_id)
+gbfac$snpid<-as.factor(gbfac$snpid)
+gbfac$tpos<-as.factor(gbfac$tpos)
+
+gbhap<-get_region(gbhap)
+gbhap %>% group_by(haplogroup) %>% mutate(prefix = return_prefix(haplogroup)) %>% ungroup -> gbhap
+
+
+
 dbDisconnect(con)
-save(genbank_count,gbhap,loci,gball,file="mitomap.RData")
+save(genbank_count,gbhap,loci,gball,gbfac,gene_lines,file="mitomap.RData")
