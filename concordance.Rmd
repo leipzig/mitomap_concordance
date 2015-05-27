@@ -1,7 +1,7 @@
 ---
 title: "The MITOMAP Concordance"
 author: "Jeremy Leipzig"
-date: "April 30, 2015"
+date: "May 28, 2015"
 output: html_document
 ---
 
@@ -184,16 +184,32 @@ In a normal PCA the covariance matrix is composed of scalars, but you can genera
 ## The breakdown of GenBank sequences by region
 ```{r byreg, echo=FALSE, message=FALSE}
 kable(as.data.frame(table(gbhap$region)))
+by_region_freq<-as.data.frame(table(gbhap$region))
+names(by_region_freq)<-c("Region","Sequences")
+ggplot(by_region_freq,aes(Region,Sequences,color=Region))+geom_bar(stat="identity",aes(fill=Region))
+
 ```
 
 ## The breakdown of GenBank sequences by major haplogroup
 ```{r bypre, echo=FALSE, message=FALSE}
 kable(as.data.frame(table(paste(gbhap$region,gbhap$prefix))))
+by_prefix_freq<-as.data.frame(table(paste(gbhap$region,gbhap$prefix)))
+names(by_prefix_freq)<-c("Haplogroup","Sequences")
+
+by_prefix_split<-cbind(colsplit(by_prefix_freq$Haplogroup, ' ', names =  c('Region','Haplogroup')),by_prefix_freq$Sequences)
+names(by_prefix_split)<-c("Region","Haplogroup","Sequences")
+
+by_prefix_split$Haplogroup<-factor(by_prefix_split$Haplogroup,levels=by_prefix_split$Haplogroup)
+ggplot(by_prefix_split,aes(Haplogroup,Sequences))+geom_bar(stat="identity",aes(fill=Region))
+
 ```
 
 ## Which regions have the most private mutations? i.e. how many haplogroups fall slightly outside of Phylotree?
 ```{r, echo=FALSE, message=FALSE}
-kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),2)*100)
+private<-prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),2)*100
+private_df<-data.frame(Region=names(private[2,]),Private=private[2,],row.names=NULL)
+ggplot(private_df,aes(Region,Private))+geom_bar(stat="identity",aes(fill=Region))+ylab("Precent of Seqs with Private Mutations")
+kable(private_df)
 ```
 
 ## Which haplogroups have the most private mutations?
@@ -201,16 +217,28 @@ kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),
 kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
 ```
 
-## Which haplogroups have the most disease entries?
+## Which regions have the most disease entries?
 These are the proportion of disease variants among all variants for each of these populations. These are out of the more than 1 million variants among the entire set.
 
 ```{r, echo=FALSE, message=FALSE}
-prop.table(table(gball$ismmut,gball$region),2)
+disease<-prop.table(table(gball$ismmut,gball$region),2)
+disease_df<-data.frame(Region=names(disease[2,]),Disease=disease[2,],row.names=NULL)
+ggplot(disease_df,aes(Region,Disease))+geom_bar(stat="identity",aes(fill=Region))+ylab("Precent of Seqs with Disease Assoc Mutation")
+
 ```
 
 ## Which haplogroups have the most disease entries?
 ```{r, echo=FALSE, message=FALSE}
-prop.table(table(gball$ismmut,gball$prefix),2)
+hapdis<-prop.table(table(gball$ismmut,paste(gball$region,gball$prefix)),2)
+hapdis_df<-data.frame(RegionPrefix=names(hapdis[2,]),Disease=hapdis[2,],row.names=NULL)
+
+by_prefix_split<-cbind(colsplit(hapdis_df$RegionPrefix, ' ', names =  c('Region','Haplogroup')),hapdis_df$Disease)
+names(by_prefix_split)<-c("Region","Haplogroup","Disease")
+
+by_prefix_split$Haplogroup<-factor(by_prefix_split$Haplogroup,levels=by_prefix_split$Haplogroup)
+ggplot(by_prefix_split,aes(Haplogroup,Disease))+geom_bar(stat="identity",aes(fill=Region))+ylab("Disease Assoc Rate among All SNPs")
+
+
 ```
 
 #Disease
@@ -223,7 +251,7 @@ gball$disease_anno<-ifelse(gball$disease=='','',paste(gball$disease,gball$snpid)
 kable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
 ```
 
-Which disease segregate by population
+## Which disease segregate by population
 ```{r disease_fish, echo=FALSE, message=FALSE}
 #table(gball$disease[gball$disease_anno!=''],gball$region[gball$disease_anno!=''])
 #can we set up contigency tables
@@ -254,6 +282,7 @@ adj_afr_disease_pvals_below_thresh<-adj_afr_disease_pvals[adj_afr_disease_pvals<
 kable(sort(adj_afr_disease_pvals_below_thresh))
 ```
 
+# PCA
 ```{r pca, echo=FALSE, message=FALSE}
 #The minimum required variables are
 
