@@ -8,7 +8,7 @@ genbank_count <- fetch(rs, n = -1) # extract all rows
 rs <- dbSendQuery(con,"select genbank_id, haplogroup, haplogroup_verbose from mitomap.genbank_haplogroup")
 gbhap <- fetch(rs, n = -1) # extract all rows
 
-rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt, haplogroup, disease, ismmut from mitomap.genbank")
+rs <- dbSendQuery(con,"select genbank_id, tpos, tnt, qnt, haplogroup, disease, ismmut, ntchange, cal_aachange from mitomap.genbank")
 gball <- fetch(rs, n = -1) # extract all rows
 
 rs <- dbSendQuery(con,"select * from mitomaster.conservation")

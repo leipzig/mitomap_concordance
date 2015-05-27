@@ -7,7 +7,7 @@ output: html_document
 
 MITOMAP conducts periodic analysis of all full length (>15.4kbp) mitochondrial sequences in GenBank. This involves processing the nearly 30k sequences through MITOMASTER. While no means an unbiased survey, the GenBank set offers some interesting opportunities to study human mitochondrial variability.
 
-```{r setup, echo=FALSE}
+```{r setup, echo=FALSE, message=FALSE}
 library(ggplot2)
 library(dplyr)
 library(RPostgreSQL)
@@ -36,7 +36,7 @@ load("mitomap.RData")
 
 # Variant frequency by position
 
-```{r varfreq, echo=FALSE}
+```{r varfreq, echo=FALSE, message=FALSE}
 #ggplot(data=hist_pos,aes(pos,variants))+geom_point(stat="identity")
 #http://www.gettinggeneticsdone.com/2013/11/a-mitochondrial-manhattan-plot.html
 #https://github.com/hadley/ggplot2/wiki/Plotting-Mitochondrial-Genetic-Association-Results
@@ -46,19 +46,23 @@ hist_pos <- summarise(by_pos,maf=sum(cnt)*100/nrow(gbhap),ln_tot=log(sum(cnt)))
 
 group_by(gene_lines,pretty_name) %>%   filter(pretty_name != 'rRNA' & pretty_name != 'tRNA' & pretty_name != 'non-coding') %>% summarize(pos=mean(pos)) -> bdries
 bdries[bdries$pretty_name=='D-Loop/Control Region',"pos"]<-50
-bdries$y<-105
+bdries$y<-110
 
 colours <- c("D-Loop/Control Region" <- "lightblue4", "tRNA" <- "magenta4", "rRNA" <- "mediumaquamarine", "Non-Coding" <- "sienna4", "ND1" <- "magenta", "ND2" <- "mediumblue", "COI" <- "olivedrab", "COII" <- "orange2", "ATPase8" <- "orchid4", "ATPase6" <- "red3", "COIII" <- "royalblue2", "ND3" <- "palegreen4", "ND4L" <- "grey0", "ND4" <- "pink4", "ND5" <- "yellow4", "ND6" <- "steelblue4", "Cytb" <- "tan","red")
 
-ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name)) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
+ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name),size=1) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
 xlab("Mitochondrial Base-Pair Location") +
 ylab("MAF") +
 ggtitle("MAF of Mitochondrial GenBank Variants") +
-layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=2.5)
+layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=3.5)
 ```
 
-# Most common variants
-```{r common_variants, echo=FALSE}
+# Top 30 Most common variants
+There are `r nrow(gbhap)` GenBank sequences. Most the common variants in these are those that distinguish the rCRS sequence.
+
+As we can see, despite what this paper says A8860G is not a rare polymorphism at all.
+http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3258716/
+```{r common_variants, echo=FALSE, message=FALSE}
 by_var_group <- group_by(genbank_count, pos, ref, alt, snpid, locus, type)
 
 by_var_cnt <- summarise(by_var_group,variants=sum(cnt))
@@ -70,33 +74,76 @@ by_var_cnt$known<-by_var_cnt$snpid %in% known_crs
 kable(by_var_cnt[order(-by_var_cnt$variants),][1:30,])
 ```
 
-Despite what this paper says A8860G is not a rare polymorphism at all.
-http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3258716/
-
 # Most and least conserved loci (over 20 bp, beware overlapping annotation)
-```{r loci, echo=FALSE}
+```{r loci, echo=FALSE, message=FALSE}
+
 get_length<-function(locus){
   return(as.integer(loci[loci$common_name==locus[1],"length"]))
 }
+#using our loci calling scheme
+get_eligible_length<-function(locus){
+  alocus<-locus[1]
+  return(as.integer(nrow(subset(gene_lines,locus==alocus))))
+}
+#weight by total variants
+group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(total_variants=sum(cnt),rate=sum(cnt)/mean(length),length=mean(length)) -> loci_conservation_total_weight
 
-group_by(genbank_count, locus, type) %>% mutate(length=get_length(locus)) %>% summarise(total_variants=sum(cnt),rate=sum(cnt)/mean(length),length=mean(length)) -> loci_conservation
-```
-## Least Conserved
-```{r least_conserved, echo=FALSE}
-kable(subset(loci_conservation[order(-loci_conservation$rate),],length>20))
-```
-## Most Conserved
-```{r most_conserved, echo=FALSE}
-kable(subset(loci_conservation[order(loci_conservation$rate),],length>20))
+#weight by distinct variant positions
+group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(variant_pos=n_distinct(pos),rate=n_distinct(pos)/mean(length),length=mean(length)) -> loci_conservation
 ```
 
-# Multiple regressions are evident by locus type
-```{r regressors, echo=FALSE}
-ggplot(loci_conservation,aes(length,total_variants,color=type))+geom_point()+geom_smooth( method=lm, se=FALSE)
+## Least Conserved Loci (over 20bp)
+```{r least_conserved, echo=FALSE, message=FALSE}
+kable(subset(loci_conservation[order(-loci_conservation$rate),],length>20)[1:10,])
+```
+
+## Most Conserved Loci (over 20bp)
+```{r most_conserved, echo=FALSE, message=FALSE}
+kable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:10,])
+```
+
+## Variation rate by type
+Multiple regressions are evident by locus type
+```{r regressors, echo=FALSE, message=FALSE}
+ggplot(loci_conservation,aes(length,variant_pos,color=type))+geom_point()+geom_smooth( method=lm, se=FALSE)
+```
+
+# Coding genes
+What is the Ti/Tv ratio? In the human genome the ratio is 2.1. Rates 
+```{r titvg, echo=FALSE, message=FALSE}
+gball %>% filter(ntchange == 'transition' | ntchange == 'transversion') %>% group_by(ntchange,tnt,qnt) %>% summarize(total_events=n(),distinct_pos=n_distinct(tpos)) %>% mutate(change=paste(tnt,">",qnt,sep="")) %>% arrange(desc(ntchange)) -> titv
+titv$change<-factor(titv$change,levels=c("A>G","G>A","C>T","T>C","A>T","T>A","A>C","C>A","G>T","T>G","C>G","G>C"))
+ggplot(titv,aes(change,distinct_pos))+geom_bar(stat="identity")
+```
+
+The Ti/Tv ratio depends on how whether we weight the positions
+```{r titvc, echo=FALSE, message=FALSE}
+gball %>% filter(ntchange == 'transition' | ntchange == 'transversion') %>% group_by(ntchange) %>% summarize(total_events=n(),distinct_pos=n_distinct(tpos)) -> calc_titv
+post_calc<-rbind(calc_titv,data.frame(ntchange="Ti/Tv",total_events=calc_titv$total_events[1]/calc_titv$total_events[2],distinct_pos=calc_titv$distinct_pos[1]/calc_titv$distinct_pos[2]))
+t_calc<-as.data.frame(t(post_calc)[-1,])
+names(t_calc)<-c("transitions","transversions","Ti/Tv")
+t_calc$transitions<-as.integer(as.character(t_calc$transitions))
+t_calc$transversions<-as.integer(as.character(t_calc$transversions))
+kable(t_calc)
+```
+
+Ny/Ns is the predecessor to Ka/Ks.
+```{r kaks, echo=FALSE, message=FALSE}
+gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% group_by(syn) %>% summarize(total_events=n()) -> kaks
+kable(kaks)
+```
+This ratio is `r kaks$total_events[1]/kaks$total_events[2]`
+
+By gene
+```{r kaksbygene, echo=FALSE, message=FALSE}
+gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% select(tpos,syn) -> aachange
+names(aachange)<-c("pos","change")
+annoaa<-merge(aachange,gene_lines,by="pos",all.x = TRUE)
+kable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,])
 ```
 
 # Population genetics
-```{r popgen, echo=FALSE}
+```{r popgen, echo=FALSE, message=FALSE}
 europe<-c("H","I","J","K","R","T","U","V","W","X")
 africa<-c("L0","L1","L2","L3","L4","L5","L6")
 asia<-c("F","B","P","A","S","O","Y","N","M","Q","G","E","D","C","Z")
@@ -135,35 +182,49 @@ PCA is really a geometric operation in which they use an operation to find a few
 In a normal PCA the covariance matrix is composed of scalars, but you can generate a PCA of SNPs for biallelic you would generally score homozygous alternate as 2, hemizygous as 1, and all reference as 0. With the mitochondria we just score REF and ALT.
 
 ## The breakdown of GenBank sequences by region
-```{r byreg, echo=FALSE}
+```{r byreg, echo=FALSE, message=FALSE}
 kable(as.data.frame(table(gbhap$region)))
 ```
+
+## The breakdown of GenBank sequences by major haplogroup
+```{r bypre, echo=FALSE, message=FALSE}
+kable(as.data.frame(table(paste(gbhap$region,gbhap$prefix))))
+```
+
 ## Which regions have the most private mutations? i.e. how many haplogroups fall slightly outside of Phylotree?
-```{r, echo=FALSE}
+```{r, echo=FALSE, message=FALSE}
 kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),2)*100)
 ```
 
-## Which haplogroups have the most disease entries?
-These are the proportion of disease variants among all variants for each of these populations
-```{r, echo=FALSE}
-prop.table(table(gball$ismmut,gball$region),2)
+## Which haplogroups have the most private mutations?
+```{r, echo=FALSE, message=FALSE}
+kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
+```
 
+## Which haplogroups have the most disease entries?
+These are the proportion of disease variants among all variants for each of these populations. These are out of the more than 1 million variants among the entire set.
+
+```{r, echo=FALSE, message=FALSE}
+prop.table(table(gball$ismmut,gball$region),2)
+```
+
+## Which haplogroups have the most disease entries?
+```{r, echo=FALSE, message=FALSE}
 prop.table(table(gball$ismmut,gball$prefix),2)
-#these are out of the more than 1 million variants among the entire set
 ```
 
 #Disease
-Many diseases have very different rates by region
+Many diseases have very different rates by region.
 
-These are dominated by major depressive associated mtuation in Asia
-Altered brain pH in Europeans
-LHON disorders all pretty high in Europenas
-```{r disease_reg, echo=FALSE}
+These are dominated by MDD in Asia, altered brain pH in Europeans, LHON disorders all elevated in Europeans.
+
+```{r disease_reg, echo=FALSE, message=FALSE}
 gball$disease_anno<-ifelse(gball$disease=='','',paste(gball$disease,gball$snpid))
 kable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
 ```
+
 Which disease segregate by population
-```{r disease_fish, echo=FALSE}
+```{r disease_fish, echo=FALSE, message=FALSE}
 #table(gball$disease[gball$disease_anno!=''],gball$region[gball$disease_anno!=''])
 #can we set up contigency tables
 numAfr<-table(gbhap$region)[['Africa']]
@@ -193,7 +254,7 @@ adj_afr_disease_pvals_below_thresh<-adj_afr_disease_pvals[adj_afr_disease_pvals<
 kable(sort(adj_afr_disease_pvals_below_thresh))
 ```
 
-```{r pca, echo=FALSE}
+```{r pca, echo=FALSE, message=FALSE}
 #The minimum required variables are
 
 #sample.id, a unique identifier for each sample.
@@ -234,7 +295,7 @@ genofile <- snpgdsOpen("mitogb.gds")
 #take all snps
 snp_subset<-levels(gbfac$snpid)
 
-MASTER_SAMPLE_NUMBER<-500
+MASTER_SAMPLE_NUMBER<-5000
 if(MASTER_SAMPLE_NUMBER){
   sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),MASTER_SAMPLE_NUMBER)]
 }else{
@@ -264,12 +325,12 @@ colScale <- scale_colour_manual(name = "region",values = myColors)
 ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=region))+colScale
 ```
 The regional PCA is interesting. If we provide a breakdown just by Africa:
-```{r, echo=FALSE}
+```{r, echo=FALSE, message=FALSE}
 names(myColors) <- levels(tab$africa_breakdown)
 colScale <- scale_colour_manual(name = "africa_breakdown",values = myColors)
 ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=africa_breakdown))+colScale
 
-if(MASTER_SAMPLE_NUMBER){
+if(MASTER_SAMPLE_NUMBER & MASTER_SAMPLE_NUMBER<length(levels(factor(gbfac$genbank_id[gbfac$region=='Africa'])))){
   africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))),MASTER_SAMPLE_NUMBER)]
 }else{
   africa_only<-levels(factor(gbfac$genbank_id[gbfac$region=='Africa']))
@@ -282,7 +343,7 @@ http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2427203/bin/gr1.jpg
 
 
 Now let's just at PCAs of the regions
-```{r doregion, echo=FALSE}
+```{r doregion, echo=FALSE, message=FALSE}
 
 PCA<-snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,eigen.cnt=2,sample.id = my_subset,snp.id = snp_subset)
 tab <- data.frame(sample.id = PCA$sample.id,
@@ -294,8 +355,9 @@ tab <- data.frame(sample.id = PCA$sample.id,
 ggplot(tab,aes(EV1,EV2))+geom_point(aes(color=prefix))
 
 ```
-Europe
-```{r, echo=FALSE}
+
+# Europe
+```{r, echo=FALSE, message=FALSE}
 if(MASTER_SAMPLE_NUMBER){
 my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))),MASTER_SAMPLE_NUMBER)]
 }else{
@@ -303,31 +365,29 @@ my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Europe']))[sample(1:len
 }
 ```
 
-```{r europe, ref.label='doregion'}
+```{r europe, ref.label='doregion', echo=FALSE, message=FALSE}
 ```
 
-#plot the PCA
-#RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16)
+# Asia
+```{r, echo=FALSE, message=FALSE}
+if(MASTER_SAMPLE_NUMBER){
+my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Asia']))[sample(1:length(levels(factor(gbfac$genbank_id[gbfac$region=='Asia']))),MASTER_SAMPLE_NUMBER)]
+}else{
+  my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Asia']))
+}
+```
 
-
-#RV <- snpgdsPCA(genofile,autosome.only=FALSE,num.thread=16,missing.rate=.1,eigen.cnt=2)
-
+```{r asia, ref.label='doregion', echo=FALSE, message=FALSE}
 ```
 
 There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these are truly priviate mutations belonging to only one sequence.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
-D-Loop gets triple stranded during replication, with hypervariable regions
-
-phenylanlinian to proline is with coding areas
-within coding regions breakout tRNA
-
-
 
 
 How many MT snps are in dbSNP?
-```{r dnsnp, echo=FALSE}
+```{r dnsnp, echo=FALSE, message=FALSE}
 
 snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
 chMTsnps <- snplocs(snps,"chMT")
@@ -350,7 +410,7 @@ In most cases this type of analysis on SNPs alone will usually only reveal the e
 
 If we combine it with phenotype it might be able to reveal combinations of SNPs that would escape GWAS, especially if we have a few haplogroups with elevated rates of a disease.
 
-```{r market_basket, echo=FALSE}
+```{r market_basket, echo=FALSE, message=FALSE}
 imatrix<-as(numsparsey, "itemMatrix")
 dimnames(imatrix)[[1]]<-levels(gbfac$genbank_id)
 dimnames(imatrix)[[2]]<-levels(gbfac$snpid)
@@ -374,7 +434,7 @@ What about conservation? There is little correlation between intra and inter spe
 Here I calculated the level of conservation between all 39 species - which match the human residue at that position.
 
 How many times do we see mutations in GenBank at that position.
-```{r conservation, echo=FALSE}
+```{r conservation, echo=FALSE, message=FALSE}
 filename<-"mito-conservation-index/makeTables/39MSAs/35_CYTB.fa"
 seqs<-readAAStringSet(filename)
 str_extract(filename,"([0-9]+)_([A-Za-z0-9]+).fa")
@@ -399,5 +459,5 @@ bycytb<-merge(of39df,cytb_conservation,by="x",all.x=TRUE)
 #no snps
 bycytb[is.na(bycytb$intra),"intra"]<-0
 melt_bycytb<-melt(bycytb,id="x")
-ggplot(melt_bycytb,aes(x=x,y=value))+geom_point(aes(color=variable))+xlab("AA_pos")+ylab("Pseudo-MAF")+title("Cytb")
+ggplot(melt_bycytb,aes(x=x,y=value))+geom_point(aes(color=variable))+xlab("AA_pos")+ylab("Pseudo-MAF")+ggtitle("Cytb")
 ```
