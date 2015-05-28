@@ -5,7 +5,10 @@ MITOMAP conducts periodic analysis of all full length (>15.4kbp) mitochondrial s
 This is a whirlwind tour through the exiting world of mitochondrial mutations
 
 ## To Run Me
-Download the source code and `mitomap.RData` from
+Checkout the source code:
+git clone https://github.research.chop.edu/leipzigj/mitomap_concordance.git
+
+Download the `mitomap.RData`, which contains all the pertinent MITOMAP tables:
 https://github.research.chop.edu/leipzigj/mitomap_concordance/releases
 
 In RStudio:
