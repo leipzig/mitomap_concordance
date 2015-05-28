@@ -24,14 +24,8 @@ library(reshape2)
 
 load("mitomap.RData")
 
-# > head(genbank_count)
-#   pos ref alt haplogroup cnt common_name
-# 1   5   A   C         B2   1         ATT
-# 2   5   A   C        H65   1         ATT
-# 3   8   G   T       M33a   2         ATT
-# 4   9   G   A        B2g   1         ATT
-# 5   9   G   A          C   2         ATT
-# 6   9   G   A        F2b   2         ATT
+# the pcas are very slow so set this to 500 for a sparse quick plot, 5000 for a deep slow one
+MASTER_SAMPLE_NUMBER<-500
 ```
 
 # Variant frequency by position
@@ -129,15 +123,15 @@ kable(t_calc)
 
 Ny/Ns is the predecessor to Ka/Ks.
 ```{r kaks, echo=FALSE, message=FALSE}
-gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% group_by(syn) %>% summarize(total_events=n()) -> kaks
+gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% group_by(syn) %>% summarize(total_events=n(),total_positions=n_distinct(tpos)) -> kaks
 kable(kaks)
 ```
-This ratio is `r kaks$total_events[1]/kaks$total_events[2]`
+This ratio is `r kaks$total_events[1]/kaks$total_events[2]` by events `r kaks$total_positions[1]/kaks$total_positions[2]`
 
 By gene
 ```{r kaksbygene, echo=FALSE, message=FALSE}
-gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% select(tpos,syn) -> aachange
-names(aachange)<-c("pos","change")
+gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% select(tpos,syn) %>% group_by(tpos,syn) %>% summarize(sequences=n()) -> aachange
+names(aachange)<-c("pos","change","sequences")
 annoaa<-merge(aachange,gene_lines,by="pos",all.x = TRUE)
 kable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,])
 ```
@@ -324,7 +318,7 @@ genofile <- snpgdsOpen("mitogb.gds")
 #take all snps
 snp_subset<-levels(gbfac$snpid)
 
-MASTER_SAMPLE_NUMBER<-5000
+
 if(MASTER_SAMPLE_NUMBER){
   sample_subset<-levels(gbfac$genbank_id)[sample(1:length(levels(gbfac$genbank_id)),MASTER_SAMPLE_NUMBER)]
 }else{
@@ -415,24 +409,22 @@ So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,
 
 
 
-How many MT snps are in dbSNP?
+# How many MT snps are in dbSNP?
 ```{r dnsnp, echo=FALSE, message=FALSE}
 
 snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
 chMTsnps <- snplocs(snps,"chMT")
+
+# sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
+# sum(unique(sort(gball$tpos)) %in% unique(sort(chMTsnps$loc)))
+# library(Vennerable)
 ```
 
 There are `r as.numeric(snpcount(snps)[["chMT"]])` mitochondrial snp positions in dbSNP and `r length(unique(sort(gball$tpos)))`
 
 There are `r length(unique(gball$snpid))` distinct mutations in the gb set.
 
-sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
-sum(unique(sort(gball$tpos)) %in% unique(sort(chMTsnps$loc)))
-library(Vennerable)
-
-3243A>G mutation
-
-
+# Market basket
 Are there associations between SNPs that are not defined by the haplogroups themselves? Market basket analysis is one way to look at this, where we consider that we have 30,000 shoppers choosing among 9919 SNPs. Market basket is a type of association rule mining using in economics, this is often called the diapers and beer study, since it discovered those two items are strongly associated.
 
 In most cases this type of analysis on SNPs alone will usually only reveal the existing haplogroup structure or (they simply identify the equivalent of tag SNPs), so it is perhaps most interesting when we view SNPs that span multiple regions and have low penetrance. It is conceivable that certain mutations convergent evolution toward similar combinations of SNPs that this can reveal.
@@ -458,7 +450,8 @@ getRules<-function(snp){
 #disease_rules<-lapply(disease_snps[1:2],getRules)
 ```
 
-What about conservation? There is little correlation between intra and inter species conservation at the gene level.
+# Conservation
+There is little correlation between intra and inter species conservation at the gene level.
 
 Here I calculated the level of conservation between all 39 species - which match the human residue at that position.
 
