@@ -211,6 +211,24 @@ kable(private_df)
 kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
 ```
 
+## Which haplogroups have the most singletons?
+```{r}
+gball %>% group_by(snpid) %>% summarize(sequences=n()) %>% filter(sequences==1) %>% select(snpid)-> singletonsnps
+gball %>% filter(snpid %in% singletonsnps$snpid) %>% group_by(prefix) %>% summarize(singletons=n()) -> singletons
+names(singletons)<-c("Haplogroup","Singletons")
+singleton_anno<-merge(singletons,by_prefix_split,by="Haplogroup",all.y=TRUE)
+singleton_anno$Singletons[is.na(singleton_anno$Singletons)]<-0
+
+#this is not that great
+singleton_melt <- melt(singleton_anno, id.vars=c('Haplogroup','Region'))
+singleton_melt$Haplogroup<-factor(singleton_melt$Haplogroup,levels=by_prefix_split$Haplogroup)
+ggplot(singleton_melt, aes(Haplogroup, value)) +   
+  geom_bar(aes(fill = variable), position = "dodge", stat="identity")
+
+singleton_anno$singletonrate<-singleton_anno$Singletons/singleton_anno$Sequences
+singleton_anno$Haplogroup<-factor(singleton_anno$Haplogroup,levels=by_prefix_split$Haplogroup)
+ggplot(singleton_anno,aes(Haplogroup,singletonrate)) + geom_bar(aes(fill = Region), position = "dodge", stat="identity")
+```
 ## Which regions have the most disease entries?
 These are the proportion of disease variants among all variants for each of these populations. These are out of the more than 1 million variants among the entire set.
 
@@ -403,7 +421,7 @@ my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Asia']))[sample(1:lengt
 ```{r asia, ref.label='doregion', echo=FALSE, message=FALSE}
 ```
 
-There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these are truly priviate mutations belonging to only one sequence.
+There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these are singletons belonging to only one sequence.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
