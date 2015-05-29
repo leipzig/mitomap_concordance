@@ -28,11 +28,12 @@ library(Biostrings)
 library(arules)
 library(reshape2)
 library(repmis)
+library(DT)
 
 load("mitomap.RData")
 
 # the pcas are very slow so set this to 500 for a sparse quick plot, 5000 for a deep slow one
-MASTER_SAMPLE_NUMBER<-5000
+MASTER_SAMPLE_NUMBER<-500
 ```
 
 # Overview
