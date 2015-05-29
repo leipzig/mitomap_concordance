@@ -13,7 +13,7 @@ MITOMAP conducts periodic analysis of all full length (>15.4kbp) mitochondrial s
 The fully reproducible source code for this project is located at:
 https://github.research.chop.edu/leipzigj/mitomap_concordance
 
-```{r setup, echo=TRUE, message=FALSE, cache=FALSE, fig.path='{{SLINK}}/'}
+```{r setup, echo=TRUE, message=FALSE, cache=TRUE, fig.path='{{SLINK}}/'}
 library(ggplot2)
 library(dplyr)
 library(RPostgreSQL)
@@ -85,6 +85,7 @@ There are `r nrow(gbhap)` GenBank sequences. Most the common variants in these a
 
 As we can see, despite what this paper says A8860G is not a rare polymorphism at all.
 http://www.ncbi.nlm.nih.gov/pmc/articles/PMC3258716/
+
 ```{r common_variants, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
 by_var_group <- group_by(genbank_count, pos, ref, alt, snpid, locus, type)
 
@@ -94,7 +95,7 @@ known_crs_snps<-"A73G, T146C, T152C, T195C, G247A, A263G, A523d, C524d, A750G, G
 known_crs<-unlist(str_split(str_replace_all(known_crs_snps,' ',''),','))
 
 by_var_cnt$known<-by_var_cnt$snpid %in% known_crs
-kable(by_var_cnt[order(-by_var_cnt$variants),][1:30,])
+datatable(by_var_cnt[order(-by_var_cnt$variants),][1:30,])
 ```
 
 # Most and least conserved loci (over 20 bp, beware overlapping annotation)
@@ -117,12 +118,12 @@ group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus
 
 ## Least Conserved Loci (over 20bp)
 ```{r least_conserved, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
-kable(subset(loci_conservation[order(-loci_conservation$rate),],length>20)[1:10,])
+datatable(subset(loci_conservation[order(-loci_conservation$rate),],length>20)[1:10,])
 ```
 
 ## Most Conserved Loci (over 20bp)
 ```{r most_conserved, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
-kable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:10,])
+datatable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:10,])
 ```
 
 ## Variation rate by type
@@ -149,14 +150,14 @@ t_calc<-as.data.frame(t(post_calc)[-1,])
 names(t_calc)<-c("transitions","transversions","Ti/Tv")
 t_calc$transitions<-as.integer(as.character(t_calc$transitions))
 t_calc$transversions<-as.integer(as.character(t_calc$transversions))
-kable(t_calc)
+datatable(t_calc)
 ```
 
 ## Ka/Ks
 Ny/Ns is the predecessor to Ka/Ks.
 ```{r kaks, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
 gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% group_by(syn) %>% summarize(total_events=n(),total_positions=n_distinct(tpos)) -> kaks
-kable(kaks)
+datatable(kaks)
 ```
 This ratio is `r kaks$total_events[1]/kaks$total_events[2]` by events `r kaks$total_positions[1]/kaks$total_positions[2]`
 
@@ -165,7 +166,7 @@ By gene
 gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% select(tpos,syn) %>% group_by(tpos,syn) %>% summarize(sequences=n()) -> aachange
 names(aachange)<-c("pos","change","sequences")
 annoaa<-merge(aachange,gene_lines,by="pos",all.x = TRUE)
-kable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,])
+datatable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,])
 ```
 
 # Population genetics
@@ -202,7 +203,7 @@ return_prefix<-function(haplogroup){
 
 ## The breakdown of GenBank sequences by region
 ```{r byreg, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
-kable(as.data.frame(table(gbhap$region)))
+datatable(as.data.frame(table(gbhap$region)))
 by_region_freq<-as.data.frame(table(gbhap$region))
 names(by_region_freq)<-c("Region","Sequences")
 ggplot(by_region_freq,aes(Region,Sequences,color=Region))+geom_bar(stat="identity",aes(fill=Region))
@@ -211,7 +212,7 @@ ggplot(by_region_freq,aes(Region,Sequences,color=Region))+geom_bar(stat="identit
 
 ## The breakdown of GenBank sequences by major haplogroup
 ```{r bypre, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
-kable(as.data.frame(table(paste(gbhap$region,gbhap$prefix))))
+datatable(as.data.frame(table(paste(gbhap$region,gbhap$prefix))))
 by_prefix_freq<-as.data.frame(table(paste(gbhap$region,gbhap$prefix)))
 names(by_prefix_freq)<-c("Haplogroup","Sequences")
 
@@ -368,12 +369,12 @@ my_subset<-levels(factor(gbfac$genbank_id[gbfac$region=='Asia']))[sample(1:lengt
 private<-prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$region),2)*100
 private_df<-data.frame(Region=names(private[2,]),Private=private[2,],row.names=NULL)
 ggplot(private_df,aes(Region,Private))+geom_bar(stat="identity",aes(fill=Region))+ylab("Precent of Seqs with Private Mutations")
-kable(private_df)
+datatable(private_df)
 ```
 
 ## Which haplogroups have the most private mutations?
 ```{r, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
-kable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
+datatable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
 ```
 
 ## Which haplogroups have the most singletons?
@@ -428,7 +429,7 @@ These are dominated by MDD in Asia, altered brain pH in Europeans, LHON disorder
 
 ```{r disease_reg, echo=TRUE, message=FALSE, cache=TRUE, dependson="setup", fig.path='{{SLINK}}/'}
 gball$disease_anno<-ifelse(gball$disease=='','',paste(gball$disease,gball$snpid))
-kable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
+datatable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
 ```
 
 ## Which diseases segregate between Afr and Eur+Asia
@@ -457,9 +458,9 @@ afr_disease_pvals<-apply(table(gball$disease_anno[gball$disease_anno!=''],gball$
 adj_afr_disease_pvals<-p.adjust(afr_disease_pvals, method = 'BH')
 
 #there are many that segregate by population
-adj_afr_disease_pvals_below_thresh<-adj_afr_disease_pvals[adj_afr_disease_pvals<0.01]
+adj_afr_disease_pvals_below_thresh<-as.data.frame(sort(adj_afr_disease_pvals[adj_afr_disease_pvals<0.01]))
 
-kable(sort(adj_afr_disease_pvals_below_thresh))
+datatable(adj_afr_disease_pvals_below_thresh)
 ```
 
 
