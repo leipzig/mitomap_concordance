@@ -50,7 +50,7 @@ bdries$y<-110
 
 colours <- c("D-Loop/Control Region" <- "lightblue4", "tRNA" <- "magenta4", "rRNA" <- "mediumaquamarine", "Non-Coding" <- "sienna4", "ND1" <- "magenta", "ND2" <- "mediumblue", "COI" <- "olivedrab", "COII" <- "orange2", "ATPase8" <- "orchid4", "ATPase6" <- "red3", "COIII" <- "royalblue2", "ND3" <- "palegreen4", "ND4L" <- "grey0", "ND4" <- "pink4", "ND5" <- "yellow4", "ND6" <- "steelblue4", "Cytb" <- "tan","red")
 
-ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name),size=1) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
+ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name),size=1) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COIbyI","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
 xlab("Mitochondrial Base-Pair Location") +
 ylab("MAF") +
 ggtitle("MAF of Mitochondrial GenBank Variants") +
@@ -144,9 +144,9 @@ kable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change
 
 # Population genetics
 ```{r popgen, echo=FALSE, message=FALSE, fig.path='{{SLINK}}/'}
-europe<-c("H","I","J","K","R","T","U","V","W","X")
-africa<-c("L0","L1","L2","L3","L4","L5","L6")
-asia<-c("F","B","P","A","S","O","Y","N","M","Q","G","E","D","C","Z")
+europe<-list("H"="(H$|H[^V])","HV"="HV","I"="I","J"="J","K"="K","R"="R","T"="T","U"="U","V"="V","W"="W","X"="X")
+africa<-list("L0"="L0","L1"="L1","L2"="L2","L3"="L3","L4"="L4","L5"="L5","L6"="L6")
+asia<-list("F"="F","B"="B","P"="P","A"="A","S"="S","O"="O","Y"="Y","N"="N","M"="M","Q"="Q","G"="G","E"="E","D"="D","C"="C","Z"="Z")
 all_prefixes<-c(europe,africa,asia)
 #assign europe, africa, asia to variants
 #get the vector of hap prefixes from the region
@@ -168,7 +168,7 @@ get_region<-function(any_gb_table){
 #takes the first but returns a vector of equal length
 prefix_pats<-paste('^',all_prefixes,sep="")
 return_prefix<-function(haplogroup){
-  all_prefixes[which(!is.na(str_locate(haplogroup[1],prefix_pats)[,"start"]))]
+  names(all_prefixes[which(!is.na(str_locate(haplogroup[1],prefix_pats)[,"start"]))])[1]
 }
 ```
 
