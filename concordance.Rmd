@@ -33,7 +33,7 @@ library(VennDiagram)
 load("mitomap.RData")
 
 # the pcas are very slow so set this to 500 for a sparse quick plot, 5000 for a deep slow one
-MASTER_SAMPLE_NUMBER<-1000
+MASTER_SAMPLE_NUMBER<-2500
 ```
 
 # Overview
@@ -105,7 +105,7 @@ known_crs_snps<-"A73G, T146C, T152C, T195C, G247A, A263G, A523d, C524d, A750G, G
 known_crs<-unlist(str_split(str_replace_all(known_crs_snps,' ',''),','))
 
 by_var_cnt$known<-by_var_cnt$snpid %in% known_crs
-datatable(by_var_cnt[order(-by_var_cnt$variants),][1:30,])
+datatable(by_var_cnt[order(-by_var_cnt$variants),][1:30,],rownames=FALSE)
 ```
 
 # Most and least conserved loci (over 20 bp, beware overlapping annotation)
@@ -120,20 +120,20 @@ get_eligible_length<-function(locus){
   return(as.integer(nrow(subset(gene_lines,locus==alocus))))
 }
 #weight by total variants
-group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(total_variants=sum(cnt),rate=sum(cnt)/mean(length),length=mean(length)) -> loci_conservation_total_weight
+group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(total_variants=sum(cnt),rate=round(sum(cnt)/mean(length),length=mean(length),digits=2)) -> loci_conservation_total_weight
 
 #weight by distinct variant positions
-group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(variant_pos=n_distinct(pos),rate=n_distinct(pos)/mean(length),length=mean(length)) -> loci_conservation
+group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(variant_pos=n_distinct(pos),rate=round(n_distinct(pos)/mean(length),digits=2),length=mean(length)) -> loci_conservation
 ```
 
 ## Least Conserved Loci (over 20bp)
 ```{r least_conserved, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-datatable(subset(loci_conservation[order(-loci_conservation$rate),],length>20)[1:10,])
+datatable(subset(loci_conservation[order(-loci_conservation$rate),],length>20)[1:10,],rownames=FALSE)
 ```
 
 ## Most Conserved Loci (over 20bp)
 ```{r most_conserved, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-datatable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:10,])
+datatable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:10,],rownames=FALSE)
 ```
 
 ## Variation rate by type
@@ -160,14 +160,14 @@ t_calc<-as.data.frame(t(post_calc)[-1,])
 names(t_calc)<-c("transitions","transversions","Ti/Tv")
 t_calc$transitions<-as.integer(as.character(t_calc$transitions))
 t_calc$transversions<-as.integer(as.character(t_calc$transversions))
-datatable(t_calc)
+datatable(t_calc,rownames=TRUE)
 ```
 
 ## Ka/Ks
 Ny/Ns is the predecessor to Ka/Ks.
 ```{r kaks, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% group_by(syn) %>% summarize(total_events=n(),total_positions=n_distinct(tpos)) -> kaks
-datatable(kaks)
+datatable(kaks,rownames=FALSE)
 ```
 This ratio is `r kaks$total_events[1]/kaks$total_events[2]` by events `r kaks$total_positions[1]/kaks$total_positions[2]`
 
@@ -176,7 +176,9 @@ By gene
 gball %>% mutate(syn=str_extract(cal_aachange,'((non-)?syn)')) %>% filter(!is.na(syn)) %>% select(tpos,syn) %>% group_by(tpos,syn) %>% summarize(sequences=n()) -> aachange
 names(aachange)<-c("pos","change","sequences")
 annoaa<-merge(aachange,gene_lines,by="pos",all.x = TRUE)
-datatable(table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,])
+bygene<-table(annoaa$locus,annoaa$change)[rowSums(table(annoaa$locus,annoaa$change))>30,]
+bygene_df<-data.frame(Gene=row.names(bygene),"non-syn"=bygene[,"non-syn"],syn=bygene[,"syn"])
+datatable(bygene_df,rownames=FALSE)
 ```
 
 # Population genetics
@@ -213,7 +215,8 @@ return_prefix<-function(haplogroup){
 
 ## The breakdown of GenBank sequences by region
 ```{r byreg, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-datatable(as.data.frame(table(gbhap$region)))
+datatable(data.frame(table(gbhap$region)),rownames=FALSE,colnames=c("Region","Freq"))
+
 by_region_freq<-as.data.frame(table(gbhap$region))
 names(by_region_freq)<-c("Region","Sequences")
 ggplot(by_region_freq,aes(Region,Sequences,color=Region))+geom_bar(stat="identity",aes(fill=Region))
@@ -222,7 +225,7 @@ ggplot(by_region_freq,aes(Region,Sequences,color=Region))+geom_bar(stat="identit
 
 ## The breakdown of GenBank sequences by major haplogroup
 ```{r bypre, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-datatable(as.data.frame(table(paste(gbhap$region,gbhap$prefix))))
+datatable(data.frame(table(paste(gbhap$region,gbhap$prefix))),rownames=FALSE,colnames=c("Region/Hap","Freq"))
 by_prefix_freq<-as.data.frame(table(paste(gbhap$region,gbhap$prefix)))
 names(by_prefix_freq)<-c("Haplogroup","Sequences")
 
@@ -390,7 +393,10 @@ datatable(private_df)
 
 ## Which haplogroups have the most private mutations?
 ```{r, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-datatable(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)
+privatehap<-(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)[2,]
+privhapdf<-data.frame(Haplogroup=names(privatehap),Private=privatehap,row.names=NULL)
+names(privdf)<-"perc private"
+datatable(privhapdf,rownames=FALSE)
 ```
 
 ## Which haplogroups have the most singletons?
@@ -445,7 +451,9 @@ These are dominated by MDD in Asia, altered brain pH in Europeans, LHON disorder
 
 ```{r disease_reg, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 gball$disease_anno<-ifelse(gball$disease=='','',paste(gball$disease,gball$snpid))
-datatable(round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3))
+diseaserates<-round(prop.table(table(gball$disease_anno[gball$disease_anno!=''],gball$region[gball$disease_anno!='']))*100,digits=3)
+dis_df<-data.frame(diseaserates)
+datatable(dis_df,rownames=FALSE,colnames=c("Variant","Region","Freq"))
 ```
 
 ## Which diseases segregate between Afr and Eur+Asia
@@ -474,9 +482,9 @@ afr_disease_pvals<-apply(table(gball$disease_anno[gball$disease_anno!=''],gball$
 adj_afr_disease_pvals<-p.adjust(afr_disease_pvals, method = 'BH')
 
 #there are many that segregate by population
-adj_afr_disease_pvals_below_thresh<-as.data.frame(sort(adj_afr_disease_pvals[adj_afr_disease_pvals<0.01]))
-
-datatable(adj_afr_disease_pvals_below_thresh)
+adj_afr_disease_pvals_below_thresh<-data.frame(Variant=sort(adj_afr_disease_pvals[adj_afr_disease_pvals<0.01]))
+adj_afr_disease_pvals_below_thresh<-cbind(rownames(adj_afr_disease_pvals_below_thresh), adj_afr_disease_pvals_below_thresh)
+datatable(adj_afr_disease_pvals_below_thresh,rownames=FALSE,colnames=c("Variant","Adj p-val"))
 ```
 
 
