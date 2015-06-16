@@ -120,7 +120,7 @@ get_eligible_length<-function(locus){
   return(as.integer(nrow(subset(gene_lines,locus==alocus))))
 }
 #weight by total variants
-group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(total_variants=sum(cnt),rate=round(sum(cnt)/mean(length),length=mean(length),digits=2)) -> loci_conservation_total_weight
+group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(total_variants=sum(cnt),rate=round(sum(cnt)/mean(length),digits=2),length=mean(length)) -> loci_conservation_total_weight
 
 #weight by distinct variant positions
 group_by(genbank_count, locus, type) %>% mutate(length=get_eligible_length(locus)) %>% summarise(variant_pos=n_distinct(pos),rate=round(n_distinct(pos)/mean(length),digits=2),length=mean(length)) -> loci_conservation
@@ -394,9 +394,8 @@ datatable(private_df)
 ## Which haplogroups have the most private mutations?
 ```{r, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 privatehap<-(prop.table(table(str_detect(gbhap$haplogroup_verbose,'\\+'),gbhap$prefix),2)*100)[2,]
-privhapdf<-data.frame(Haplogroup=names(privatehap),Private=privatehap,row.names=NULL)
-names(privdf)<-"perc private"
-datatable(privhapdf,rownames=FALSE)
+privhapdf<-data.frame(Haplogroup=names(privatehap),Private=round(privatehap,digits=2),row.names=NULL)
+datatable(privhapdf,rownames=FALSE,colnames=c("Haplogroup","Frac Private"))
 ```
 
 ## Which haplogroups have the most singletons?
