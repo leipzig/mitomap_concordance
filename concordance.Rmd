@@ -2,12 +2,10 @@
 title: "The MITOMAP Concordance"
 author: "Jeremy Leipzig"
 date: "May 28, 2015"
-output:
-  knitrBootstrap::bootstrap_document:
-    title: "condordance_bootstrap"
-    theme: default
+output: html_document
 ---
 
+    
 MITOMAP conducts periodic analysis of all full length (>15.4kbp) mitochondrial sequences in GenBank. This involves processing the nearly 30k sequences through MITOMASTER. While no means an unbiased survey, the GenBank set offers some interesting opportunities to study human mitochondrial variability.
 
 The fully reproducible source code for this project is located at:
@@ -30,15 +28,16 @@ library(reshape2)
 library(repmis)
 library(DT)
 library(BSgenome)
+library(VennDiagram)
 
 load("mitomap.RData")
 
 # the pcas are very slow so set this to 500 for a sparse quick plot, 5000 for a deep slow one
-MASTER_SAMPLE_NUMBER<-250
+MASTER_SAMPLE_NUMBER<-1000
 ```
 
 # Overview
-There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `sum(table(gbfac$snpid)==1)` of these are singletons belonging to only one sequence.
+There are `r length(unique(gball$snpid))` mutations in the GenBank set over `r length(unique(gball$tpos))` which is a rate of `r length(unique(gball$tpos))/16568` per bp. `r sum(table(gbfac$snpid)==1)` of these are singletons belonging to only one sequence.
 
 So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,641,871 non-N bases which is a rate of `r 51217066/3064641871`
 
@@ -47,18 +46,28 @@ So in contrast to the nuclear genes 51,217,066 rs numbers in dbSNP out of 3,064,
 
 snps <- SNPlocs.Hsapiens.dbSNP141.GRCh38
 chMTsnps <- snplocs(snps,"chMT")
+chMTlocs<- unique(sort(chMTsnps$loc))
+gblocs<-unique(sort(gball$tpos))
 
-# sum(unique(sort(chMTsnps$loc)) %in% unique(sort(gball$tpos)))
-# sum(unique(sort(gball$tpos)) %in% unique(sort(chMTsnps$loc)))
-# library(Vennerable)
+notingb<-!(chMTlocs %in% gblocs)
+
+venn<-venn.diagram(list(gb=gblocs,dbsnp=chMTlocs),filename=NULL)
+grid.draw(venn)
 ```
 
-There are `r as.numeric(snpcount(snps)[["chMT"]])` mitochondrial snp positions in dbSNP and `r length(unique(sort(gball$tpos)))`
+There are `r length(chMTlocs)` mitochondrial snp positions in dbSNP and `r length(gblocs)` in the GenBank set.
+
+There are an alarming number of SNPs in dbSNP that are missing from the GenBank set (`r sum(notingb)`) but it does not appear they are clustered.
+```{r missdistribution, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
+chmt<-data.frame(chMTlocs)
+chmt$in_genbank<-chMTlocs %in% gblocs
+ggplot(chmt,aes(chMTlocs))+geom_bar(aes(fill=in_genbank))
+```
 
 
 # Variation
 
-There are `r length(unique(gball$snpid))` distinct mutations in the gb set over `length(unique(gball$tpos))` positions.
+There are `r length(unique(gball$snpid))` distinct mutations in the gb set over `r length(unique(gball$tpos))` positions.
 
 ```{r varfreq, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 #ggplot(data=hist_pos,aes(pos,variants))+geom_point(stat="identity")
