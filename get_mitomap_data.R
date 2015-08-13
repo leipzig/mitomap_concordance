@@ -1,6 +1,8 @@
 # DO NOT RUN THIS IF YOU ALREADY HAVE mitomap.RData
 
 library(RPostgreSQL)
+library(dplyr)
+source("common.R")
 
 con <- dbConnect(PostgreSQL(), user= "mitoreadonly", password="pzme93$.", dbname="mito", host="rescommapdb01.research.chop.edu")
 

@@ -1,7 +1,7 @@
 ---
 title: "The MITOMAP Concordance"
 author: "Jeremy Leipzig"
-date: "May 28, 2015"
+date: "August 13, 2015"
 output: html_document
 ---
 
@@ -31,9 +31,18 @@ library(BSgenome)
 library(VennDiagram)
 
 load("mitomap.RData")
+source("common.R")
 
 # the pcas are very slow so set this to 500 for a sparse quick plot, 5000 for a deep slow one
-MASTER_SAMPLE_NUMBER<-2500
+MASTER_SAMPLE_NUMBER<-4500
+
+palette <- c("dodgerblue1", "skyblue4", "chocolate1", "seagreen4",
+"bisque3", "red4", "purple4", "mediumpurple3",
+"maroon", "dodgerblue4", "skyblue2", "darkcyan",
+"darkslategray3", "lightgreen", "bisque",
+"palevioletred1", "black", "gray79", "lightsalmon4",
+"darkgoldenrod1")
+
 ```
 
 # Overview
@@ -61,7 +70,7 @@ There are an alarming number of SNPs in dbSNP that are missing from the GenBank 
 ```{r missdistribution, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 chmt<-data.frame(chMTlocs)
 chmt$in_genbank<-chMTlocs %in% gblocs
-ggplot(chmt,aes(chMTlocs))+geom_bar(aes(fill=in_genbank))
+ggplot(chmt,aes(chMTlocs))+geom_bar(aes(fill=in_genbank),binwidth=100)+scale_fill_manual(values=palette)
 ```
 
 
@@ -81,13 +90,20 @@ group_by(gene_lines,pretty_name) %>%   filter(pretty_name != 'rRNA' & pretty_nam
 bdries[bdries$pretty_name=='D-Loop/Control Region',"pos"]<-50
 bdries$y<-110
 
-colours <- c("D-Loop/Control Region" <- "lightblue4", "tRNA" <- "magenta4", "rRNA" <- "mediumaquamarine", "Non-Coding" <- "sienna4", "ND1" <- "magenta", "ND2" <- "mediumblue", "COI" <- "olivedrab", "COII" <- "orange2", "ATPase8" <- "orchid4", "ATPase6" <- "red3", "COIII" <- "royalblue2", "ND3" <- "palegreen4", "ND4L" <- "grey0", "ND4" <- "pink4", "ND5" <- "yellow4", "ND6" <- "steelblue4", "Cytb" <- "tan","red")
+colours <- c("D-Loop/Control Region" = "lightblue4", "tRNA" = "magenta4", "rRNA" = "mediumaquamarine", "Non-Coding" = "sienna4", "ND1" = "magenta", "ND2" = "mediumblue", "COI" = "olivedrab", "COII" = "orange2", "ATPase8" = "orchid4", "ATPase6" = "red3", "COIII" = "royalblue2", "ND3" = "palegreen4", "ND4L" = "grey0", "ND4" = "pink4", "ND5" = "yellow4", "ND6" = "steelblue4", "Cytb" = "tan","red")
 
-ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) + geom_point()+ coord_polar(direction = -1) + geom_point(data=gene_lines,aes(pos,y,color = pretty_name),size=1) + scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COIbyI","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
-xlab("Mitochondrial Base-Pair Location") +
-ylab("MAF") +
-ggtitle("MAF of Mitochondrial GenBank Variants") +
-layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=3.5)
+hist_pos$color<-colours[hist_pos$pretty_name]
+gene_lines$color<-colours[gene_lines$pretty_name]
+
+ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) +
+  geom_point() +
+  coord_polar(direction = -1) +
+  geom_point(data=gene_lines,aes(pos,y,color = pretty_name),size=0.8) +
+  scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COIbyI","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
+  xlab("Mitochondrial Base-Pair Location") +
+  ylab("MAF") +
+  ggtitle("MAF of Mitochondrial GenBank Variants") +
+  layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=3.5)
 ```
 
 # Top 30 Most common variants
@@ -139,7 +155,7 @@ datatable(subset(loci_conservation[order(loci_conservation$rate),],length>20)[1:
 ## Variation rate by type
 Multiple regressions are evident by locus type
 ```{r regressors, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-ggplot(loci_conservation,aes(length,variant_pos,color=type))+geom_point()+geom_smooth( method=lm, se=FALSE)
+ggplot(loci_conservation,aes(length,variant_pos,color=type))+geom_point()+geom_smooth( method=lm, se=FALSE)+scale_color_manual(values=palette)
 ```
 
 # Coding genes
@@ -149,7 +165,7 @@ What is the Ti/Tv ratio? In the human genome the ratio is 2.1. Rates
 ```{r titvg, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
 gball %>% filter(ntchange == 'transition' | ntchange == 'transversion') %>% group_by(ntchange,tnt,qnt) %>% summarize(total_events=n(),distinct_pos=n_distinct(tpos)) %>% mutate(change=paste(tnt,">",qnt,sep="")) %>% arrange(desc(ntchange)) -> titv
 titv$change<-factor(titv$change,levels=c("A>G","G>A","C>T","T>C","A>T","T>A","A>C","C>A","G>T","T>G","C>G","G>C"))
-ggplot(titv,aes(change,distinct_pos))+geom_bar(stat="identity")
+ggplot(titv,aes(change,distinct_pos))+geom_bar(stat="identity",aes(fill=ntchange))
 ```
 
 The Ti/Tv ratio depends on how whether we weight the positions
@@ -183,32 +199,10 @@ datatable(bygene_df,rownames=FALSE)
 
 # Population genetics
 ```{r popgen, echo=TRUE, message=FALSE, cache=FALSE,  fig.path='{{SLINK}}/'}
-europe<-list("H"="(H$|H[^V])","HV"="HV","I"="I","J"="J","K"="K","R"="R","T"="T","U"="U","V"="V","W"="W","X"="X")
-africa<-list("L0"="L0","L1"="L1","L2"="L2","L3"="L3","L4"="L4","L5"="L5","L6"="L6")
-asia<-list("F"="F","B"="B","P"="P","A"="A","S"="S","O"="O","Y"="Y","N"="N","M"="M","Q"="Q","G"="G","E"="E","D"="D","C"="C","Z"="Z")
-all_prefixes<-c(europe,africa,asia)
-#assign europe, africa, asia to variants
-#get the vector of hap prefixes from the region
-#iterate over the prefixes and assign them all this region e.g. "europe"
-get_region<-function(any_gb_table){
-    any_gb_table$region<-NA
-      get_region_logical_lists<-function(regionprefixes){
-        lapply(regionprefixes,function(a_haplogroup_prefix){
-          str_detect(any_gb_table$haplogroup,paste('^',a_haplogroup_prefix,sep=""))
-      })
-    }
-  any_gb_table[Reduce("|",get_region_logical_lists(asia)),"region"]<-"Asia"
-  any_gb_table[Reduce("|",get_region_logical_lists(africa)),"region"]<-"Africa"
-  any_gb_table[Reduce("|",get_region_logical_lists(europe)),"region"]<-"Europe"
-  return(any_gb_table)
-}
 
-#just return the prefix i.e. A15c is A, L1c is L1
-#takes the first but returns a vector of equal length
-prefix_pats<-paste('^',all_prefixes,sep="")
-return_prefix<-function(haplogroup){
-  names(all_prefixes[which(!is.na(str_locate(haplogroup[1],prefix_pats)[,"start"]))])[1]
-}
+
+
+
 ```
 
 
