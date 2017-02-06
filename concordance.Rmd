@@ -102,8 +102,11 @@ ggplot(hist_pos, aes(x = pos,y = maf,color = pretty_name)) +
   scale_colour_manual(values = colours,"Loci",breaks = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COIbyI","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb"), labels = c("D-Loop/Control Region","tRNA","rRNA","non-coding","ND1","ND2","COI","COII","ATPase8","ATPase6","COIII","ND3","ND4L","ND4","ND5","ND6","Cytb")) +
   xlab("Mitochondrial Base-Pair Location") +
   ylab("MAF") +
-  ggtitle("MAF of Mitochondrial GenBank Variants") +
-  layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries,size=3.5)
+  ggtitle("MAF of Mitochondrial GenBank Variants") 
+
+# deprecated - rewrite
+#  layer(geom="text",mapping =aes(pos,y,label = pretty_name),data = bdries)
+#,size=3.5)
 ```
 
 # Top 30 Most common variants

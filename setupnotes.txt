@@ -1,6 +1,1 @@
-CREATE USER mitoreadonly;
-alter user mitoreadonly with password 'pzme93$.';
-grant select on ALL TABLES IN SCHEMA mitomap to mitoreadonly;
-grant select on ALL TABLES IN SCHEMA mitomaster to mitoreadonly;
-grant usage on schema mitomap to mitoreadonly;
-grant usage on schema mitomaster to mitoreadonly;
+/nas/pb/leipzig/mitomap_concordance/setupnotes.txt

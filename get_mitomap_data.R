@@ -4,7 +4,7 @@ library(RPostgreSQL)
 library(dplyr)
 source("common.R")
 
-con <- dbConnect(PostgreSQL(), user= "mitoreadonly", password="pzme93$.", dbname="mito", host="rescommapdb01.research.chop.edu")
+source("secret.R")
 
 rs <- dbSendQuery(con,"select genbank_count.* from mitomap.genbank_count ORDER BY pos, ref, alt, haplogroup, cnt")
 genbank_count <- fetch(rs, n = -1) # extract all rows
