@@ -2,6 +2,9 @@ FROM rocker/binder:3.4.2
 
 # Copy repo into ${HOME}, make user own $HOME
 USER root
+
+
+
 RUN install2.r --error \
     RPostgreSQL \
     stringr \
@@ -38,6 +41,8 @@ RUN apt-get install -y supervisor
 # Note: The official Debian and Ubuntu images automatically ``apt-get clean``
 # after each ``apt-get``
 
+COPY mitomap.dump.sql.gz .
+
 # Run the rest of the commands as the ``postgres`` user created by the ``postgres-9.3`` package when it was ``apt-get installed``
 USER postgres
 
@@ -47,7 +52,10 @@ USER postgres
 #       allows the RUN command to span multiple lines.
 RUN    /etc/init.d/postgresql start &&\
     psql --command "CREATE USER docker WITH SUPERUSER PASSWORD 'docker';" &&\
-    createdb -O docker docker
+    psql --command "CREATE ROLE mitoadmin; CREATE ROLE mitouser;" &&\
+    createdb -O docker docker &&\
+    createdb mitomap &&\
+    gunzip < mitomap.dump.sql.gz | psql mitomap
 
 # Adjust PostgreSQL configuration so that remote connections to the
 # database are possible.
